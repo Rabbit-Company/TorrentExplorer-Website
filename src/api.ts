@@ -13,6 +13,7 @@ export interface ReleaseListItem {
 
 export interface ReleaseDetail extends ReleaseListItem {
 	mediainfo: string;
+	group: Array<{ id: number; season: string | null }>;
 }
 
 export interface Pagination {

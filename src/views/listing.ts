@@ -1,5 +1,5 @@
 import { listReleases, type Category, type ReleaseGroup } from "../api.ts";
-import { el, formatDate, debounce, toast, categoryLabel } from "../utils.ts";
+import { el, formatDate, debounce, toast, categoryLabel, navigateTo } from "../utils.ts";
 
 const PAGE_SIZE = 24;
 
@@ -81,86 +81,78 @@ export async function renderListing(app: HTMLElement, category: Category): Promi
 	await load();
 }
 
-/** Render a group; single-release groups fall back to the classic linkable card. */
 function groupCard(group: ReleaseGroup): HTMLElement {
-	if (group.releases.length === 1) {
-		return singleReleaseCard(group);
-	}
-
 	const titleLine = [group.title];
 	if (group.year) titleLine.push(`(${group.year})`);
 
+	const hasMultiple = group.releases.length > 1;
 	const seasonCount = group.releases.filter((r) => r.season).length;
 
+	const defaultRelease = group.releases[0]!;
+	const defaultHref = `/${defaultRelease.category}/${defaultRelease.id}`;
+
 	const metaChildren: (HTMLElement | string)[] = [];
-	if (seasonCount > 0) {
+	if (hasMultiple && seasonCount > 0) {
 		metaChildren.push(seasonCount === 1 ? "1 season" : `${seasonCount} seasons`);
 		metaChildren.push(el("span", { className: "dot", text: "·" }));
 	}
 	metaChildren.push(formatDate(group.latest_uploaded_at));
 
-	const seasonList = el("div", {
-		className: "season-list",
-		children: group.releases.map((r) =>
-			el("a", {
-				className: "season-chip",
-				attrs: {
-					href: `/${r.category}/${r.id}`,
-					"data-link": "true",
-					title: r.torrent_name,
-				},
-				text: r.season ?? "Release",
-			}),
-		),
-	});
-
-	return el("div", {
-		className: "release-card release-group",
-		children: [
-			el("h3", { className: "rc-title", text: titleLine.join(" ") }),
-			el("div", { className: "rc-meta", children: metaChildren }),
-			seasonList,
-			el("div", {
-				className: "rc-tags",
-				children: group.tags.slice(0, 5).map((tag, idx) =>
-					el("span", {
-						className: idx === 0 ? "tag accent" : "tag",
-						text: tag,
+	const hasSeasons = group.releases.some((r) => r.season);
+	const seasonList = hasSeasons
+		? el("div", {
+				className: "season-list",
+				children: group.releases.map((r) =>
+					el("a", {
+						className: "season-chip",
+						attrs: {
+							href: `/${r.category}/${r.id}`,
+							"data-link": "true",
+							title: r.torrent_name,
+						},
+						text: r.season ?? "Release",
 					}),
 				),
-			}),
-		],
-	});
-}
+			})
+		: null;
 
-/** Classic single-item card used for movies and single-season shows. */
-function singleReleaseCard(group: ReleaseGroup): HTMLElement {
-	const item = group.releases[0]!;
-	const titleLine = [item.title];
-	if (item.year) titleLine.push(`(${item.year})`);
-	//if (item.season) titleLine.push(`- ${item.season}`);
+	const children: (HTMLElement | null)[] = [
+		el("h3", { className: "rc-title", text: titleLine.join(" ") }),
+		el("div", { className: "rc-meta", children: metaChildren }),
+		seasonList,
+		el("div", {
+			className: "rc-tags",
+			children: group.tags.slice(0, 5).map((tag, idx) =>
+				el("span", {
+					className: idx === 0 ? "tag accent" : "tag",
+					text: tag,
+				}),
+			),
+		}),
+	];
 
-	const metaChildren: (HTMLElement | string)[] = [];
-	if (item.season) metaChildren.push(item.season, el("span", { className: "dot", text: "·" }));
-	metaChildren.push(formatDate(item.uploaded_at));
-
-	return el("a", {
+	const card = el("div", {
 		className: "release-card",
-		attrs: { href: `/${item.category}/${item.id}`, "data-link": "true" },
-		children: [
-			el("h3", { className: "rc-title", text: titleLine.join(" ") }),
-			el("div", { className: "rc-meta", children: metaChildren }),
-			el("div", {
-				className: "rc-tags",
-				children: item.tags.slice(0, 5).map((tag, idx) =>
-					el("span", {
-						className: idx === 0 ? "tag accent" : "tag",
-						text: tag,
-					}),
-				),
-			}),
-		],
+		attrs: {
+			tabindex: "0",
+			role: "link",
+			"aria-label": titleLine.join(" "),
+		},
+		children: children.filter(Boolean) as HTMLElement[],
 	});
+
+	card.addEventListener("click", (e) => {
+		if ((e.target as HTMLElement).closest("a[data-link]")) return;
+		navigateTo(defaultHref);
+	});
+	card.addEventListener("keydown", (e) => {
+		if (e.key !== "Enter" && e.key !== " ") return;
+		if ((e.target as HTMLElement).closest("a[data-link]")) return;
+		e.preventDefault();
+		navigateTo(defaultHref);
+	});
+
+	return card;
 }
 
 function emptyState(query: string): HTMLElement {

@@ -130,6 +130,27 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 			],
 		});
 
+		// Season nav (only when the group has more than one release)
+		const seasonNav =
+			release.group.length > 1
+				? el("div", {
+						className: "season-nav",
+						children: [
+							el("span", { className: "season-nav-label", text: "Seasons:" }),
+							...release.group.map((g) =>
+								el("a", {
+									className: g.id === release.id ? "season-chip current" : "season-chip",
+									attrs: {
+										href: `/${release.category}/${g.id}`,
+										"data-link": "true",
+									},
+									text: g.season ?? "Release",
+								}),
+							),
+						],
+					})
+				: null;
+
 		// ----- Build cards grouped by type -----
 		const generalVideoCards: HTMLElement[] = [];
 
@@ -176,7 +197,7 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 		});
 
 		// Assemble main content
-		const children: (HTMLElement | null)[] = [backLink, header, generalVideoGrid, audioGrid, textGrid, chaptersCard, rawDetails];
+		const children: (HTMLElement | null)[] = [backLink, header, seasonNav, generalVideoGrid, audioGrid, textGrid, chaptersCard, rawDetails];
 		app.replaceChildren(...(children.filter(Boolean) as HTMLElement[]));
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : "Failed to load release";

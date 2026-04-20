@@ -82,3 +82,10 @@ export function categoryLabel(category: string): string {
 	if (category === "anime") return "Anime";
 	return capitalize(category);
 }
+
+export function navigateTo(path: string): void {
+	if (window.location.pathname === path) return;
+	window.history.pushState(null, "", path);
+	window.scrollTo(0, 0);
+	window.dispatchEvent(new PopStateEvent("popstate"));
+}
