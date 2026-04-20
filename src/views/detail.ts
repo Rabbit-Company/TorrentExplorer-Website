@@ -1,4 +1,5 @@
 import { getRelease, torrentUrl, type Category } from "../api.ts";
+import { buildMagnetLink, parseTorrent } from "../bencode.ts";
 import { parseMediaInfo, formatValue, type MediaInfoSection } from "../mediainfo.ts";
 import { el, formatDate, toast, categoryLabel } from "../utils.ts";
 
@@ -73,6 +74,42 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 			children: ["⬇ Download .torrent"],
 		});
 
+		const magnetBtn = el("button", {
+			className: "magnet-btn",
+			attrs: { type: "button" },
+			text: "🧲 Copy magnet",
+		}) as HTMLButtonElement;
+
+		let magnetCache: string | null = null;
+
+		magnetBtn.addEventListener("click", async () => {
+			const restore = () => {
+				magnetBtn.disabled = false;
+				magnetBtn.textContent = "🧲 Copy magnet";
+			};
+
+			magnetBtn.disabled = true;
+			magnetBtn.textContent = "Building…";
+
+			try {
+				if (!magnetCache) {
+					const res = await fetch(torrentUrl(release.category, release.id));
+					if (!res.ok) throw new Error(`Failed to fetch torrent (${res.status})`);
+					const bytes = new Uint8Array(await res.arrayBuffer());
+					const meta = await parseTorrent(bytes);
+					magnetCache = buildMagnetLink(meta);
+				}
+				await navigator.clipboard.writeText(magnetCache);
+				magnetBtn.textContent = "✓ Copied";
+				toast("Magnet link copied to clipboard", "success");
+				setTimeout(restore, 1800);
+			} catch (err) {
+				const msg = err instanceof Error ? err.message : "Could not build magnet link";
+				toast(msg, "error");
+				restore();
+			}
+		});
+
 		const tagRow = el("div", {
 			className: "rc-tags",
 			attrs: { style: "margin-top: 8px;" },
@@ -86,8 +123,9 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 				el("div", { className: "detail-meta", children: metaChildren }),
 				tagRow,
 				el("div", {
+					className: "button-row",
 					attrs: { style: "margin-top: 20px;" },
-					children: [downloadBtn],
+					children: [downloadBtn, magnetBtn],
 				}),
 			],
 		});
