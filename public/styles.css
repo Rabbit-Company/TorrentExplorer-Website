@@ -404,6 +404,46 @@ main {
 	color: var(--border-strong);
 }
 
+/* ==== Release group card (multi-season shows) ==== */
+.release-card.release-group {
+	cursor: default;
+}
+
+.release-card.release-group:hover {
+	transform: none;
+	border-color: var(--border);
+}
+
+.season-list {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 4px 0;
+}
+
+.season-chip {
+	display: inline-flex;
+	align-items: center;
+	padding: 5px 11px;
+	background: var(--bg-hover);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	color: var(--text);
+	font-size: 12px;
+	font-weight: 600;
+	font-family: var(--font-mono);
+	letter-spacing: 0.02em;
+	transition: all 0.15s;
+	text-decoration: none;
+}
+
+.season-chip:hover {
+	background: var(--accent-dim);
+	border-color: var(--accent);
+	color: var(--accent);
+	transform: translateY(-1px);
+}
+
 .rc-tags {
 	display: flex;
 	flex-wrap: wrap;

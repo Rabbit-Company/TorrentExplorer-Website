@@ -22,8 +22,16 @@ export interface Pagination {
 	pages: number;
 }
 
+export interface ReleaseGroup {
+	title: string;
+	year: number | null;
+	latest_uploaded_at: number;
+	tags: string[];
+	releases: ReleaseListItem[];
+}
+
 export interface ListResponse {
-	items: ReleaseListItem[];
+	groups: ReleaseGroup[];
 	pagination: Pagination;
 }
 

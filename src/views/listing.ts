@@ -1,4 +1,4 @@
-import { listReleases, type Category, type ReleaseListItem } from "../api.ts";
+import { listReleases, type Category, type ReleaseGroup } from "../api.ts";
 import { el, formatDate, debounce, toast, categoryLabel } from "../utils.ts";
 
 const PAGE_SIZE = 24;
@@ -44,20 +44,20 @@ export async function renderListing(app: HTMLElement, category: Category): Promi
 		gridContainer.replaceChildren(el("div", { className: "loading-screen", text: "Loading…" }));
 		paginationContainer.replaceChildren();
 		try {
-			const { items, pagination } = await listReleases(category, {
+			const { groups, pagination } = await listReleases(category, {
 				page: state.page,
 				limit: PAGE_SIZE,
 				q: state.q || undefined,
 			});
 
-			counter.textContent = pagination.total === 1 ? "1 release" : `${pagination.total} releases`;
+			counter.textContent = pagination.total === 1 ? "1 title" : `${pagination.total} titles`;
 
-			if (items.length === 0) {
+			if (groups.length === 0) {
 				gridContainer.replaceChildren(emptyState(state.q));
 				return;
 			}
 
-			gridContainer.replaceChildren(...items.map((item) => releaseCard(item)));
+			gridContainer.replaceChildren(...groups.map((g) => groupCard(g)));
 			paginationContainer.replaceChildren(
 				...buildPagination(state.page, pagination.pages, (page) => {
 					state.page = page;
@@ -81,10 +81,64 @@ export async function renderListing(app: HTMLElement, category: Category): Promi
 	await load();
 }
 
-function releaseCard(item: ReleaseListItem): HTMLElement {
+/** Render a group; single-release groups fall back to the classic linkable card. */
+function groupCard(group: ReleaseGroup): HTMLElement {
+	if (group.releases.length === 1) {
+		return singleReleaseCard(group);
+	}
+
+	const titleLine = [group.title];
+	if (group.year) titleLine.push(`(${group.year})`);
+
+	const seasonCount = group.releases.filter((r) => r.season).length;
+
+	const metaChildren: (HTMLElement | string)[] = [];
+	if (seasonCount > 0) {
+		metaChildren.push(seasonCount === 1 ? "1 season" : `${seasonCount} seasons`);
+		metaChildren.push(el("span", { className: "dot", text: "·" }));
+	}
+	metaChildren.push(formatDate(group.latest_uploaded_at));
+
+	const seasonList = el("div", {
+		className: "season-list",
+		children: group.releases.map((r) =>
+			el("a", {
+				className: "season-chip",
+				attrs: {
+					href: `/${r.category}/${r.id}`,
+					"data-link": "true",
+					title: r.torrent_name,
+				},
+				text: r.season ?? "Release",
+			}),
+		),
+	});
+
+	return el("div", {
+		className: "release-card release-group",
+		children: [
+			el("h3", { className: "rc-title", text: titleLine.join(" ") }),
+			el("div", { className: "rc-meta", children: metaChildren }),
+			seasonList,
+			el("div", {
+				className: "rc-tags",
+				children: group.tags.slice(0, 5).map((tag, idx) =>
+					el("span", {
+						className: idx === 0 ? "tag accent" : "tag",
+						text: tag,
+					}),
+				),
+			}),
+		],
+	});
+}
+
+/** Classic single-item card used for movies and single-season shows. */
+function singleReleaseCard(group: ReleaseGroup): HTMLElement {
+	const item = group.releases[0]!;
 	const titleLine = [item.title];
 	if (item.year) titleLine.push(`(${item.year})`);
-	if (item.season) titleLine.push(`- ${item.season}`);
+	//if (item.season) titleLine.push(`- ${item.season}`);
 
 	const metaChildren: (HTMLElement | string)[] = [];
 	if (item.season) metaChildren.push(item.season, el("span", { className: "dot", text: "·" }));
