@@ -4,6 +4,7 @@ import { renderHome } from "./views/home.ts";
 import { renderListing } from "./views/listing.ts";
 import { renderDetail } from "./views/detail.ts";
 import { toast } from "./utils.ts";
+import { setupDonation } from "./donation.ts";
 
 const CATEGORIES = new Set<Category>(["movies", "series", "anime"]);
 
@@ -18,6 +19,7 @@ async function boot() {
 	try {
 		const info = await getInfo();
 		brand = info.releaseGroup;
+		setupDonation(info.donation?.xmr);
 	} catch (err) {
 		console.error(err);
 		toast("Could not reach the API", "error", 5000);

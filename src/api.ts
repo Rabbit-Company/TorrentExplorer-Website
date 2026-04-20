@@ -30,6 +30,9 @@ export interface ListResponse {
 export interface InfoResponse {
 	releaseGroup: string;
 	stats: Record<Category, number>;
+	donation: {
+		xmr?: string;
+	};
 }
 
 let apiUrl = "";
