@@ -1,0 +1,14 @@
+{
+	"name": "torrent-explorer-web",
+	"version": "1.0.0",
+	"description": "Static frontend for the torrent explorer",
+	"type": "module",
+	"scripts": {
+		"dev": "bun run build.ts --watch",
+		"build": "bun run build.ts"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"typescript": "^5.6.0"
+	}
+}

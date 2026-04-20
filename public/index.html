@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Torrent Explorer</title>
+		<meta name="color-scheme" content="dark" />
+		<meta name="description" content="Browse and download releases" />
+		<link rel="stylesheet" href="/styles.css" />
+		<link
+			rel="icon"
+			type="image/svg+xml"
+			href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath fill='%23ff7043' d='M16 2a14 14 0 1 0 0 28 14 14 0 0 0 0-28Zm-3 8 3 5 3-5 2 1-4 7v5h-2v-5l-4-7 2-1Z'/%3E%3C/svg%3E"
+		/>
+	</head>
+	<body>
+		<header class="site-header">
+			<div class="container header-inner">
+				<a href="/" class="brand" data-link>
+					<span class="brand-name" data-brand>...</span>
+				</a>
+				<nav class="main-nav">
+					<a href="/movies" data-link data-nav="movies">Movies</a>
+					<a href="/series" data-link data-nav="series">Series</a>
+					<a href="/anime" data-link data-nav="anime">Anime</a>
+				</nav>
+			</div>
+		</header>
+
+		<main id="app" class="container">
+			<div class="loading-screen">Loading…</div>
+		</main>
+
+		<footer class="site-footer">
+			<div class="container">
+				<span>© <span data-current-year></span> <span data-brand>...</span></span>
+				<span class="footer-sep">·</span>
+				<span>Powered by <a href="https://github.com/Rabbit-Company/TorrentExplorer-Server" target="_blank">TorrentExporter</a></span>
+			</div>
+		</footer>
+
+		<div id="toast-container" class="toast-container"></div>
+
+		<script type="module" src="/main.js"></script>
+	</body>
+</html>
