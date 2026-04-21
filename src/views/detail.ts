@@ -20,7 +20,7 @@ const VIDEO_KEYS = [
 const AUDIO_KEYS = ["Format", "Channel(s)", "Sampling rate", "Bit rate", "Stream size", "Language"];
 const TEXT_KEYS = ["Format", "Language", "Title", "Stream size", "Default", "Forced"];
 const GENERAL_KEYS = [
-	"Movie name",
+	"Complete name",
 	"Source",
 	"File size",
 	"Duration",
@@ -35,6 +35,7 @@ const GENERAL_KEYS = [
 ];
 
 const DISPLAY_NAMES: Record<string, string> = {
+	"Complete name": "File",
 	SOURCE: "Source",
 	"LANGUAGE_DETECTOR/VERSION": "Language Detector",
 	"RABBIT_ENCODER/VERSION": "Rabbit Encoder Version",
@@ -239,12 +240,20 @@ function buildCard(title: string, section: MediaInfoSection, preferredKeys: stri
 		const field = section.fields.find((f) => f.key.toLowerCase() === key.toLowerCase());
 		if (!field || !field.value) continue;
 		seen.add(field.key.toLowerCase());
+
+		// Extract filename from full path for "Complete name"
+		let displayValue = field.value;
+		if (field.key.toLowerCase() === "complete name") {
+			const parts = field.value.split(/[/\\]/);
+			displayValue = parts.pop() || field.value;
+		}
+
 		rows.push(
 			el("div", {
 				className: "info-row",
 				children: [
 					el("span", { className: "label", text: getDisplayName(field.key) }),
-					el("span", { className: "value", text: formatValue(field.key, field.value) }),
+					el("span", { className: "value", text: formatValue(field.key, displayValue) }),
 				],
 			}),
 		);
