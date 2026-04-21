@@ -11,8 +11,18 @@ export interface ReleaseListItem {
 	uploaded_at: number;
 }
 
+export interface ReleaseFile {
+	path: string[];
+	length: number;
+}
+
 export interface ReleaseDetail extends ReleaseListItem {
 	mediainfo: string;
+	seeders: number | null;
+	leechers: number | null;
+	completed: number | null;
+	last_scraped_at: number | null;
+	files: ReleaseFile[];
 	group: Array<{ id: number; season: string | null }>;
 }
 

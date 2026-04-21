@@ -49,6 +49,19 @@ export function formatDate(timestamp: number): string {
 	});
 }
 
+export function formatBytes(bytes: number | null | undefined): string {
+	if (bytes === null || bytes === undefined || !Number.isFinite(bytes) || bytes < 0) return "—";
+	if (bytes < 1024) return `${bytes} B`;
+	const units = ["KiB", "MiB", "GiB", "TiB", "PiB"];
+	let value = bytes / 1024;
+	let i = 0;
+	while (value >= 1024 && i < units.length - 1) {
+		value /= 1024;
+		i++;
+	}
+	return `${value.toFixed(2)} ${units[i]}`;
+}
+
 export function debounce<T extends (...args: any[]) => any>(fn: T, ms: number): T {
 	let timer: ReturnType<typeof setTimeout> | null = null;
 	return ((...args: Parameters<T>) => {

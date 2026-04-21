@@ -1,7 +1,7 @@
-import { getRelease, torrentUrl, type Category } from "../api.ts";
+import { getRelease, torrentUrl, type Category, type ReleaseDetail, type ReleaseFile } from "../api.ts";
 import { buildMagnetLink, parseTorrent } from "../bencode.ts";
 import { parseMediaInfo, formatValue, type MediaInfoSection } from "../mediainfo.ts";
-import { el, formatDate, toast, categoryLabel } from "../utils.ts";
+import { el, formatDate, toast, categoryLabel, formatBytes } from "../utils.ts";
 
 // Fields we like to surface in each card
 const VIDEO_KEYS = [
@@ -152,6 +152,12 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 					})
 				: null;
 
+		// Tracker stats (seeders / leechers / completed)
+		const trackerStats = buildTrackerStats(release);
+
+		// File list from the .torrent
+		const filesCard = buildFilesCard(release.files);
+
 		// ----- Build cards grouped by type -----
 		const generalVideoCards: HTMLElement[] = [];
 
@@ -198,7 +204,18 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 		});
 
 		// Assemble main content
-		const children: (HTMLElement | null)[] = [backLink, header, seasonNav, generalVideoGrid, audioGrid, textGrid, chaptersCard, rawDetails];
+		const children: (HTMLElement | null)[] = [
+			backLink,
+			header,
+			trackerStats,
+			seasonNav,
+			generalVideoGrid,
+			audioGrid,
+			textGrid,
+			chaptersCard,
+			filesCard,
+			rawDetails,
+		];
 		app.replaceChildren(...(children.filter(Boolean) as HTMLElement[]));
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : "Failed to load release";
@@ -311,5 +328,96 @@ function buildChaptersCard(menu: MediaInfoSection): HTMLElement {
 		className: "info-card",
 		attrs: { style: "grid-column: 1 / -1;" },
 		children: [el("h3", { text: "🎬 Chapters" }), ...rows],
+	});
+}
+
+function buildTrackerStats(release: ReleaseDetail): HTMLElement | null {
+	const hasAny = release.seeders !== null || release.leechers !== null || release.completed !== null || release.last_scraped_at !== null;
+	if (!hasAny) return null;
+
+	const stat = (icon: string, label: string, value: number | null, variant: string): HTMLElement =>
+		el("div", {
+			className: `tracker-stat tracker-stat-${variant}`,
+			children: [
+				el("span", { className: "tracker-stat-icon", text: icon }),
+				el("div", {
+					className: "tracker-stat-body",
+					children: [
+						el("span", {
+							className: "tracker-stat-value",
+							text: value === null ? "—" : value.toLocaleString(),
+						}),
+						el("span", { className: "tracker-stat-label", text: label }),
+					],
+				}),
+			],
+		});
+
+	const grid = el("div", {
+		className: "tracker-stats",
+		children: [
+			stat("🡅", "Seeders", release.seeders, "seed"),
+			stat("🡇", "Leechers", release.leechers, "leech"),
+			stat("✓", "Downloaded", release.completed, "done"),
+		],
+	});
+
+	const footerChildren: (HTMLElement | string)[] =
+		release.last_scraped_at !== null ? [`Tracker stats updated ${formatDate(release.last_scraped_at)}`] : ["Tracker stats have not been scraped yet"];
+
+	const footer = el("div", {
+		className: "tracker-stats-footer",
+		children: footerChildren,
+	});
+
+	return el("div", {
+		className: "tracker-stats-wrapper",
+		children: [grid, footer],
+	});
+}
+
+function buildFilesCard(files: ReleaseFile[]): HTMLElement | null {
+	if (!files || files.length === 0) return null;
+
+	const totalSize = files.reduce((sum, f) => sum + (Number.isFinite(f.length) ? f.length : 0), 0);
+
+	const rows = files.map((file) => {
+		const fullPath = Array.isArray(file.path) ? file.path.join("/") : String(file.path ?? "");
+		return el("li", {
+			className: "file-row",
+			children: [
+				el("span", {
+					className: "file-name",
+					text: fullPath,
+					attrs: { title: fullPath },
+				}),
+				el("span", { className: "file-size", text: formatBytes(file.length) }),
+			],
+		});
+	});
+
+	const countLabel = files.length === 1 ? "1 file" : `${files.length.toLocaleString()} files`;
+
+	const summary = el("summary", {
+		children: [
+			el("span", {
+				className: "files-summary-left",
+				children: [el("span", { className: "files-summary-caret" }), el("span", { className: "files-summary-title", text: "📁 Files" })],
+			}),
+			el("span", {
+				className: "files-summary-meta",
+				text: `${countLabel} · ${formatBytes(totalSize)}`,
+			}),
+		],
+	});
+
+	// Default open for small lists, collapsed for long ones
+	const attrs: Record<string, string> = {};
+	if (files.length <= 20) attrs.open = "";
+
+	return el("details", {
+		className: "files-card",
+		attrs,
+		children: [summary, el("ul", { className: "file-list", children: rows })],
 	});
 }
