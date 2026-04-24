@@ -18,6 +18,7 @@ export interface ReleaseFile {
 
 export interface ReleaseDetail extends ReleaseListItem {
 	mediainfo: string;
+	magnet: string | null;
 	seeders: number | null;
 	leechers: number | null;
 	completed: number | null;

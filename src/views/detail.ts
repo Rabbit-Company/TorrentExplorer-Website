@@ -1,5 +1,4 @@
 import { getRelease, torrentUrl, type Category, type ReleaseDetail, type ReleaseFile } from "../api.ts";
-import { buildMagnetLink, parseTorrent } from "../bencode.ts";
 import { parseMediaInfo, formatValue, type MediaInfoSection } from "../mediainfo.ts";
 import { el, formatDate, toast, categoryLabel, formatBytes } from "../utils.ts";
 
@@ -81,31 +80,25 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 			text: "🧲 Copy magnet",
 		}) as HTMLButtonElement;
 
-		let magnetCache: string | null = null;
+		if (!release.magnet) {
+			magnetBtn.disabled = true;
+			magnetBtn.title = "Magnet link unavailable for this release";
+		}
 
 		magnetBtn.addEventListener("click", async () => {
+			if (!release.magnet) return;
 			const restore = () => {
 				magnetBtn.disabled = false;
 				magnetBtn.textContent = "🧲 Copy magnet";
 			};
-
 			magnetBtn.disabled = true;
-			magnetBtn.textContent = "Building…";
-
 			try {
-				if (!magnetCache) {
-					const res = await fetch(torrentUrl(release.category, release.id));
-					if (!res.ok) throw new Error(`Failed to fetch torrent (${res.status})`);
-					const bytes = new Uint8Array(await res.arrayBuffer());
-					const meta = await parseTorrent(bytes);
-					magnetCache = buildMagnetLink(meta);
-				}
-				await navigator.clipboard.writeText(magnetCache);
+				await navigator.clipboard.writeText(release.magnet);
 				magnetBtn.textContent = "✓ Copied";
 				toast("Magnet link copied to clipboard", "success");
 				setTimeout(restore, 1800);
 			} catch (err) {
-				const msg = err instanceof Error ? err.message : "Could not build magnet link";
+				const msg = err instanceof Error ? err.message : "Could not copy magnet link";
 				toast(msg, "error");
 				restore();
 			}
