@@ -16,8 +16,8 @@ const VIDEO_KEYS = [
 	"Chroma subsampling",
 	"Writing library",
 ];
-const AUDIO_KEYS = ["Format", "Channel(s)", "Sampling rate", "Bit rate", "Stream size", "Language"];
-const TEXT_KEYS = ["Format", "Language", "Title", "Stream size", "Default", "Forced"];
+const AUDIO_KEYS = ["Format", "Channel(s)", "Sampling rate", "Bit rate", "Stream size", "Language", "Default", "Forced", "Commentary"];
+const TEXT_KEYS = ["Format", "Language", "Title", "Stream size", "Default", "Forced", "Hearing impaired", "Commentary"];
 const GENERAL_KEYS = [
 	"Complete name",
 	"Source",
@@ -404,9 +404,8 @@ function buildFilesCard(files: ReleaseFile[]): HTMLElement | null {
 		],
 	});
 
-	// Default open for small lists, collapsed for long ones
 	const attrs: Record<string, string> = {};
-	if (files.length <= 20) attrs.open = "";
+	attrs.open = "";
 
 	return el("details", {
 		className: "files-card",
