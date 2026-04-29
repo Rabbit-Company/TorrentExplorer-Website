@@ -948,3 +948,240 @@ details.mediainfo-raw pre {
 		font-size: 16px;
 	}
 }
+
+/* ==== RSS / Prowlarr page ==== */
+.rss-page {
+	max-width: 880px;
+	margin: 0 auto;
+}
+
+.rss-url-card {
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+	padding: 20px;
+	margin-bottom: 16px;
+}
+.rss-url-card-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	gap: 16px;
+	margin-bottom: 12px;
+	flex-wrap: wrap;
+}
+.rss-url-card h3 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+}
+.rss-url-card-sub {
+	color: var(--text-muted);
+	font-size: 13px;
+}
+
+.rss-url-row {
+	display: flex;
+	gap: 8px;
+	align-items: stretch;
+}
+
+.rss-url-input {
+	flex: 1;
+	min-width: 0;
+	padding: 10px 14px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	color: var(--text);
+	font-family: var(--font-mono);
+	font-size: 13px;
+	overflow-x: auto;
+	white-space: nowrap;
+	user-select: all;
+	text-decoration: none;
+}
+.rss-url-input:hover {
+	border-color: var(--border-strong);
+	color: var(--accent);
+}
+
+.rss-copy-btn {
+	flex-shrink: 0;
+	padding: 8px 16px;
+	background: var(--bg-hover);
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius);
+	color: var(--text);
+	font-size: 13px;
+	font-family: inherit;
+	cursor: pointer;
+	transition: all 0.15s;
+	white-space: nowrap;
+}
+.rss-copy-btn:hover {
+	border-color: var(--accent);
+	color: var(--accent);
+}
+.rss-copy-btn:disabled {
+	opacity: 0.6;
+	cursor: not-allowed;
+}
+
+.rss-cat-filter {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 16px;
+}
+.rss-cat-chip {
+	padding: 6px 14px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	color: var(--text-muted);
+	font-size: 13px;
+	cursor: pointer;
+	transition: all 0.15s;
+	font-family: inherit;
+}
+.rss-cat-chip:hover {
+	color: var(--text);
+	border-color: var(--border-strong);
+}
+.rss-cat-chip.active {
+	background: var(--accent-dim);
+	color: var(--accent);
+	border-color: var(--accent);
+}
+
+.rss-section {
+	margin-top: 40px;
+}
+.rss-section h2 {
+	font-size: 20px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	margin: 0 0 16px;
+}
+
+.rss-steps {
+	list-style: none;
+	counter-reset: step;
+	padding: 0;
+	margin: 0;
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius-lg);
+}
+.rss-step {
+	counter-increment: step;
+	display: flex;
+	gap: 16px;
+	padding: 16px 20px;
+	border-bottom: 1px solid var(--border);
+}
+.rss-step:last-child {
+	border-bottom: none;
+}
+.rss-step::before {
+	content: counter(step);
+	flex-shrink: 0;
+	width: 28px;
+	height: 28px;
+	background: var(--accent-dim);
+	color: var(--accent);
+	border-radius: 50%;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	font-weight: 700;
+	font-size: 13px;
+	font-family: var(--font-mono);
+}
+
+.rss-step-content {
+	flex: 1;
+	min-width: 0;
+}
+.rss-step-title {
+	font-weight: 600;
+	margin-bottom: 4px;
+	color: var(--text);
+}
+.rss-step-detail {
+	color: var(--text-muted);
+	font-size: 14px;
+}
+
+.rss-step-settings {
+	margin-top: 12px;
+	padding: 12px 14px;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	font-size: 13px;
+}
+.rss-step-settings dt {
+	color: var(--text-muted);
+	font-size: 11px;
+	margin-bottom: 2px;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+.rss-step-settings dd {
+	margin: 0 0 10px 0;
+	font-family: var(--font-mono);
+	color: var(--text);
+	word-break: break-all;
+}
+.rss-step-settings dd:last-child {
+	margin-bottom: 0;
+}
+
+.rss-params-table {
+	width: 100%;
+	border-collapse: collapse;
+	background: var(--bg-elevated);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	overflow: hidden;
+}
+.rss-params-table th,
+.rss-params-table td {
+	padding: 10px 14px;
+	text-align: left;
+	border-bottom: 1px solid var(--border);
+	font-size: 13px;
+	vertical-align: top;
+}
+.rss-params-table th {
+	color: var(--text-muted);
+	font-weight: 500;
+	background: var(--bg);
+	text-transform: uppercase;
+	font-size: 11px;
+	letter-spacing: 0.05em;
+}
+.rss-params-table tr:last-child td {
+	border-bottom: none;
+}
+.rss-params-table code {
+	background: var(--bg);
+	padding: 1px 6px;
+	border-radius: 4px;
+	color: var(--accent);
+	font-size: 12px;
+}
+
+@media (max-width: 640px) {
+	.rss-url-row {
+		flex-direction: column;
+	}
+	.rss-copy-btn {
+		width: 100%;
+	}
+	.rss-step {
+		padding: 12px 14px;
+	}
+}

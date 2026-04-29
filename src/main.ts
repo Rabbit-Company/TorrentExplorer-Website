@@ -1,10 +1,11 @@
-import { initApi, getInfo, type Category } from "./api.ts";
+import { initApi, getInfo, type Category, rssUrl } from "./api.ts";
 import { Router } from "./router.ts";
 import { renderHome } from "./views/home.ts";
 import { renderListing } from "./views/listing.ts";
 import { renderDetail } from "./views/detail.ts";
 import { toast } from "./utils.ts";
 import { setupDonation } from "./donation.ts";
+import { renderRss } from "./views/rss.ts";
 
 const CATEGORIES = new Set<Category>(["movies", "series", "anime"]);
 
@@ -32,11 +33,18 @@ async function boot() {
 		node.textContent = new Date().getFullYear().toString();
 	}
 
+	injectFeedDiscovery(brand);
+
 	const router = new Router();
 
 	router.add("/", () => {
 		updateActiveNav(null);
 		return renderHome(app, brand);
+	});
+
+	router.add("/rss", () => {
+		updateActiveNav("rss");
+		return renderRss(app, brand);
 	});
 
 	router.add("/:category", (match) => {
@@ -59,7 +67,23 @@ async function boot() {
 	router.start();
 }
 
-function updateActiveNav(category: Category | null) {
+function injectFeedDiscovery(brand: string): void {
+	const head = document.head;
+	const make = (title: string, href: string) => {
+		const link = document.createElement("link");
+		link.rel = "alternate";
+		link.type = "application/rss+xml";
+		link.title = title;
+		link.href = href;
+		head.appendChild(link);
+	};
+	make(`${brand} - All releases`, rssUrl());
+	make(`${brand} - Movies`, rssUrl("movies"));
+	make(`${brand} - Series`, rssUrl("series"));
+	make(`${brand} - Anime`, rssUrl("anime"));
+}
+
+function updateActiveNav(category: Category | "rss" | null) {
 	for (const link of document.querySelectorAll<HTMLElement>("[data-nav]")) {
 		link.classList.toggle("active", link.dataset.nav === category);
 	}

@@ -101,3 +101,16 @@ export function getRelease(category: Category, id: number): Promise<ReleaseDetai
 export function torrentUrl(category: Category, id: number): string {
 	return `${apiUrl}/api/torrent/${category}/${id}`;
 }
+
+export function absoluteApiBase(): string {
+	return apiUrl || window.location.origin;
+}
+
+export function rssUrl(category?: Category): string {
+	const base = absoluteApiBase();
+	return category ? `${base}/api/rss?cat=${category}` : `${base}/api/rss`;
+}
+
+export function torznabUrl(): string {
+	return `${absoluteApiBase()}/api/torznab`;
+}
