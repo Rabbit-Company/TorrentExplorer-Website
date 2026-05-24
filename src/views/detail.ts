@@ -1,5 +1,6 @@
 import { getRelease, torrentUrl, type Category, type ReleaseDetail, type ReleaseFile } from "../api.ts";
 import { parseMediaInfo, formatValue, type MediaInfoSection } from "../mediainfo.ts";
+import { decodeRabbitSettings, looksLikeSettingsCode, type DecodedSettings } from "../rabbit-settings.ts";
 import { el, formatDate, toast, categoryLabel, formatBytes } from "../utils.ts";
 
 // Fields we like to surface in each card
@@ -156,7 +157,13 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 
 		// General card
 		if (info.general) {
-			generalVideoCards.push(buildCard("📄 General", info.general, GENERAL_KEYS));
+			const settingsField = info.general.fields.find((f) => f.key.toUpperCase() === "RABBIT_ENCODER/SETTINGS");
+			const decoded = settingsField && looksLikeSettingsCode(settingsField.value) ? decodeRabbitSettings(settingsField.value) : null;
+
+			const generalKeys = decoded ? GENERAL_KEYS.filter((k) => k.toUpperCase() !== "RABBIT_ENCODER/SETTINGS") : GENERAL_KEYS;
+			generalVideoCards.push(buildCard("📄 General", info.general, generalKeys));
+
+			if (decoded) generalVideoCards.push(buildSettingsCard(decoded));
 		}
 
 		// Video cards
@@ -295,6 +302,29 @@ function buildCard(title: string, section: MediaInfoSection, preferredKeys: stri
 	return el("div", {
 		className: "info-card",
 		children: [el("h3", { children: headerChildren }), ...rows],
+	});
+}
+
+function buildSettingsCard(decoded: DecodedSettings): HTMLElement {
+	const rows: HTMLElement[] = [];
+
+	const row = (label: string, value: string): HTMLElement =>
+		el("div", {
+			className: "info-row",
+			children: [el("span", { className: "label", text: label }), el("span", { className: "value", text: value })],
+		});
+
+	if (decoded.newerFormat) rows.push(row("Format", `RE${decoded.version} (shown best-effort)`));
+
+	if (decoded.items.length === 0) {
+		rows.push(row("Settings", "All defaults"));
+	} else {
+		for (const item of decoded.items) rows.push(row(item.label, item.value));
+	}
+
+	return el("div", {
+		className: "info-card",
+		children: [el("h3", { text: "⚙️ Rabbit Encoder Settings" }), ...rows],
 	});
 }
 
