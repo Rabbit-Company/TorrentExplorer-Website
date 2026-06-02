@@ -174,6 +174,8 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 		push("Skip boosting", bool(core.sb));
 		push("No phase inversion", bool(core.np));
 		push("Dedupe subtitles", bool(core.dd));
+		push("Highest audio layout only", bool(core.kc));
+		push("No commentary audio", bool(core.rc));
 	}
 
 	// Denoise
