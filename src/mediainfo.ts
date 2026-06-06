@@ -18,6 +18,29 @@ export interface ParsedMediaInfo {
 	raw: string;
 }
 
+const SERVICE_KIND_MAP: Record<string, string> = {
+	"hearing impaired": "Hearing impaired",
+	"visually impaired": "Visually impaired",
+	"text descriptions": "Text descriptions",
+	original: "Original",
+	commentary: "Commentary",
+};
+
+function expandServiceKind(fields: MediaInfoField[]): void {
+	const serviceKind = fields.find((f) => f.key.toLowerCase() === "service kind");
+	if (!serviceKind) return;
+
+	const present = new Set(fields.map((f) => f.key.toLowerCase()));
+
+	for (const token of serviceKind.value.split("/")) {
+		const canonical = SERVICE_KIND_MAP[token.trim().toLowerCase()];
+		if (!canonical) continue; // unknown token -> ignore (forward-compat)
+		if (present.has(canonical.toLowerCase())) continue; // legacy field already there
+		fields.push({ key: canonical, value: "Yes" });
+		present.add(canonical.toLowerCase());
+	}
+}
+
 /**
  * Parse MediaInfo "Text" output into structured sections.
  *
@@ -69,6 +92,7 @@ export function parseMediaInfo(raw: string): ParsedMediaInfo {
 			}
 		}
 
+		expandServiceKind(fields);
 		const section: MediaInfoSection = { type, fields };
 		const lower = type.toLowerCase();
 

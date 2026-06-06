@@ -4,6 +4,9 @@ import { decodeRabbitSettings, looksLikeSettingsCode, type DecodedSettings } fro
 import { el, formatDate, toast, categoryLabel, formatBytes } from "../utils.ts";
 
 // Fields we like to surface in each card
+
+const SERVICE_KIND_KEYS = ["Hearing impaired", "Visually impaired", "Text descriptions", "Original", "Commentary"];
+
 const VIDEO_KEYS = [
 	"Format",
 	"Width",
@@ -16,9 +19,10 @@ const VIDEO_KEYS = [
 	"Color space",
 	"Chroma subsampling",
 	"Writing library",
+	...SERVICE_KIND_KEYS,
 ];
-const AUDIO_KEYS = ["Format", "Channel(s)", "Sampling rate", "Bit rate", "Stream size", "Language", "Default", "Forced", "Commentary"];
-const TEXT_KEYS = ["Format", "Language", "Title", "Stream size", "Default", "Forced", "Hearing impaired", "Commentary"];
+const AUDIO_KEYS = ["Format", "Channel(s)", "Sampling rate", "Bit rate", "Stream size", "Language", "Default", "Forced", ...SERVICE_KIND_KEYS];
+const TEXT_KEYS = ["Format", "Language", "Title", "Stream size", "Default", "Forced", ...SERVICE_KIND_KEYS];
 const GENERAL_KEYS = [
 	"Complete name",
 	"Source",
