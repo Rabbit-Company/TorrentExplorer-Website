@@ -53,6 +53,30 @@ export interface InfoResponse {
 	donation: {
 		xmr?: string;
 	};
+	requests?: {
+		enabled: boolean;
+		rateLimitWindowMinutes: number;
+	};
+}
+
+export type RequestKind = "anime" | "series" | "movies";
+
+export interface RequestResult {
+	id: number;
+	kind: RequestKind;
+	counter: number;
+	created: number;
+	last_updated: number;
+}
+
+export class RateLimitError extends Error {
+	readonly retryAfter: number;
+
+	constructor(message: string, retryAfter: number) {
+		super(message);
+		this.name = "RateLimitError";
+		this.retryAfter = retryAfter;
+	}
 }
 
 let apiUrl = "";
@@ -96,6 +120,36 @@ export function listReleases(category: Category, params: { page?: number; limit?
 
 export function getRelease(category: Category, id: number): Promise<ReleaseDetail> {
 	return request<ReleaseDetail>(`/api/${category}/${id}`);
+}
+
+export async function submitRequest(kind: RequestKind, id: number): Promise<RequestResult> {
+	const res = await fetch(`${apiUrl}/api/requests`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ kind, id }),
+	});
+
+	if (res.status === 429) {
+		let message = "You can only make a request once per hour. Please try again later.";
+		let retryAfter = 3600;
+		try {
+			const body = (await res.json()) as { error?: string; retryAfter?: number };
+			if (body.error) message = body.error;
+			if (typeof body.retryAfter === "number" && body.retryAfter > 0) retryAfter = body.retryAfter;
+		} catch {}
+		throw new RateLimitError(message, retryAfter);
+	}
+
+	if (!res.ok) {
+		let message = `Request failed: ${res.status}`;
+		try {
+			const body = (await res.json()) as { error?: string };
+			if (body.error) message = body.error;
+		} catch {}
+		throw new Error(message);
+	}
+
+	return res.json() as Promise<RequestResult>;
 }
 
 export function torrentUrl(category: Category, id: number): string {

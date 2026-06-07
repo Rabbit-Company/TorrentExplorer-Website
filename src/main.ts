@@ -3,6 +3,7 @@ import { Router } from "./router.ts";
 import { renderHome } from "./views/home.ts";
 import { renderListing } from "./views/listing.ts";
 import { renderDetail } from "./views/detail.ts";
+import { renderRequest } from "./views/request.ts";
 import { toast } from "./utils.ts";
 import { setupDonation } from "./donation.ts";
 import { renderRss } from "./views/rss.ts";
@@ -40,6 +41,11 @@ async function boot() {
 	router.add("/", () => {
 		updateActiveNav(null);
 		return renderHome(app, brand);
+	});
+
+	router.add("/request", () => {
+		updateActiveNav("request");
+		return renderRequest(app);
 	});
 
 	router.add("/rss", () => {
@@ -83,9 +89,9 @@ function injectFeedDiscovery(brand: string): void {
 	make(`${brand} - Anime`, rssUrl("anime"));
 }
 
-function updateActiveNav(category: Category | "rss" | null) {
+function updateActiveNav(section: Category | "rss" | "request" | null) {
 	for (const link of document.querySelectorAll<HTMLElement>("[data-nav]")) {
-		link.classList.toggle("active", link.dataset.nav === category);
+		link.classList.toggle("active", link.dataset.nav === section);
 	}
 }
 
