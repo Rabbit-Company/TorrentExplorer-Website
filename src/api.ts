@@ -57,6 +57,10 @@ export interface InfoResponse {
 		enabled: boolean;
 		rateLimitWindowMinutes: number;
 	};
+	comments?: {
+		enabled: boolean;
+		maxLength: number;
+	};
 }
 
 export type RequestKind = "anime" | "series" | "movies";
@@ -67,6 +71,23 @@ export interface RequestResult {
 	counter: number;
 	created: number;
 	last_updated: number;
+}
+
+export interface CommentReply {
+	id: number;
+	author: string;
+	author_type: "anonymous" | "owner";
+	body: string;
+	created_at: number;
+}
+export interface CommentNode extends CommentReply {
+	replies: CommentReply[];
+}
+export interface PostedComment extends CommentReply {
+	parent_id: number | null;
+}
+export interface CommentsResponse {
+	comments: CommentNode[];
 }
 
 export class RateLimitError extends Error {
@@ -150,6 +171,67 @@ export async function submitRequest(kind: RequestKind, id: number): Promise<Requ
 	}
 
 	return res.json() as Promise<RequestResult>;
+}
+
+export function getOwnerToken(): string | null {
+	try {
+		const t = localStorage.getItem("token");
+		return t && t.trim() ? t.trim() : null;
+	} catch {
+		return null;
+	}
+}
+
+function ownerHeaders(): Record<string, string> {
+	const t = getOwnerToken();
+	return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
+export function listComments(category: Category, id: number): Promise<CommentsResponse> {
+	return request<CommentsResponse>(`/api/${category}/${id}/comments`);
+}
+
+export async function postComment(category: Category, id: number, body: string, parentId?: number): Promise<PostedComment> {
+	const res = await fetch(`${apiUrl}/api/${category}/${id}/comments`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json", ...ownerHeaders() },
+		body: JSON.stringify(parentId ? { body, parent_id: parentId } : { body }),
+	});
+
+	if (res.status === 429) {
+		let message = "You're commenting too fast. Please wait a moment.";
+		let retryAfter = 300;
+		try {
+			const b = (await res.json()) as { error?: string; retryAfter?: number };
+			if (b.error) message = b.error;
+			if (typeof b.retryAfter === "number" && b.retryAfter > 0) retryAfter = b.retryAfter;
+		} catch {}
+		throw new RateLimitError(message, retryAfter);
+	}
+	if (!res.ok) {
+		let message = `Request failed: ${res.status}`;
+		try {
+			const b = (await res.json()) as { error?: string };
+			if (b.error) message = b.error;
+		} catch {}
+		throw new Error(message);
+	}
+	return res.json() as Promise<PostedComment>;
+}
+
+export async function deleteComment(category: Category, id: number, commentId: number): Promise<void> {
+	const res = await fetch(`${apiUrl}/api/${category}/${id}/comments/${commentId}`, {
+		method: "DELETE",
+		headers: { ...ownerHeaders() },
+	});
+	if (!res.ok) {
+		let message = `Request failed: ${res.status}`;
+		try {
+			const b = (await res.json()) as { error?: string };
+			if (b.error) message = b.error;
+		} catch {}
+		throw new Error(message);
+	}
 }
 
 export function torrentUrl(category: Category, id: number): string {

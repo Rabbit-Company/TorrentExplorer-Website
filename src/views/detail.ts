@@ -2,6 +2,7 @@ import { getRelease, torrentUrl, type Category, type ReleaseDetail, type Release
 import { parseMediaInfo, formatValue, type MediaInfoSection } from "../mediainfo.ts";
 import { decodeRabbitSettings, looksLikeSettingsCode, type DecodedSettings } from "../rabbit-settings.ts";
 import { el, formatDate, toast, categoryLabel, formatBytes } from "../utils.ts";
+import { mountComments } from "./comments.ts";
 
 // Fields we like to surface in each card
 
@@ -221,6 +222,8 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 			rawDetails,
 		];
 		app.replaceChildren(...(children.filter(Boolean) as HTMLElement[]));
+
+		await mountComments(app, release.category, release.id);
 	} catch (err) {
 		const msg = err instanceof Error ? err.message : "Failed to load release";
 		app.replaceChildren(
