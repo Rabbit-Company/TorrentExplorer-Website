@@ -90,6 +90,34 @@ export interface CommentsResponse {
 	comments: CommentNode[];
 }
 
+export interface PublicQueueGroup {
+	title: string;
+	season: string | null;
+	queuePosition: number;
+	total: number;
+	done: number;
+	encoding: number;
+	queued: number;
+	error: number;
+	progress: number;
+	etaMs: number | null;
+	active: boolean;
+}
+export interface PublicEncoder {
+	name: string;
+	online: boolean;
+	paused: boolean;
+	lastUpdated: number | null;
+	totals: { total: number; done: number; encoding: number; queued: number; error: number };
+	etaMs: number | null;
+	groups: PublicQueueGroup[];
+}
+export interface EncoderQueueResponse {
+	enabled: boolean;
+	pollIntervalSeconds: number;
+	encoders: PublicEncoder[];
+}
+
 export class RateLimitError extends Error {
 	readonly retryAfter: number;
 
@@ -141,6 +169,10 @@ export function listReleases(category: Category, params: { page?: number; limit?
 
 export function getRelease(category: Category, id: number): Promise<ReleaseDetail> {
 	return request<ReleaseDetail>(`/api/${category}/${id}`);
+}
+
+export function getEncoderQueue(): Promise<EncoderQueueResponse> {
+	return request<EncoderQueueResponse>("/api/encoders/queue");
 }
 
 export async function submitRequest(kind: RequestKind, id: number): Promise<RequestResult> {

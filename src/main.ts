@@ -7,6 +7,7 @@ import { renderRequest } from "./views/request.ts";
 import { toast } from "./utils.ts";
 import { setupDonation } from "./donation.ts";
 import { renderRss } from "./views/rss.ts";
+import { renderQueue } from "./views/queue.ts";
 
 const CATEGORIES = new Set<Category>(["movies", "series", "anime"]);
 
@@ -46,6 +47,11 @@ async function boot() {
 	router.add("/request", () => {
 		updateActiveNav("request");
 		return renderRequest(app);
+	});
+
+	router.add("/queue", () => {
+		updateActiveNav("queue");
+		return renderQueue(app, brand);
 	});
 
 	router.add("/rss", () => {
@@ -89,7 +95,7 @@ function injectFeedDiscovery(brand: string): void {
 	make(`${brand} - Anime`, rssUrl("anime"));
 }
 
-function updateActiveNav(section: Category | "rss" | "request" | null) {
+function updateActiveNav(section: Category | "rss" | "request" | "queue" | null) {
 	for (const link of document.querySelectorAll<HTMLElement>("[data-nav]")) {
 		link.classList.toggle("active", link.dataset.nav === section);
 	}
