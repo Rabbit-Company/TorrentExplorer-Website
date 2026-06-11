@@ -1847,3 +1847,20 @@ details.mediainfo-raw pre {
 	background: rgba(88, 166, 255, 0.14);
 	color: var(--info);
 }
+
+.queue-card.is-complete {
+	border-color: rgba(63, 185, 80, 0.4);
+}
+.qc-bar-fill.is-complete {
+	background: var(--success);
+}
+.qc-complete-badge {
+	display: inline-block;
+	padding: 2px 9px;
+	background: rgba(63, 185, 80, 0.14);
+	color: var(--success);
+	border-radius: 5px;
+	font-size: 12px;
+	font-weight: 600;
+	font-family: var(--font-mono);
+}

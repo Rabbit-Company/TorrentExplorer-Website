@@ -102,6 +102,8 @@ export interface PublicQueueGroup {
 	progress: number;
 	etaMs: number | null;
 	active: boolean;
+	completed: boolean;
+	finishedAt: number | null;
 }
 export interface PublicEncoder {
 	name: string;

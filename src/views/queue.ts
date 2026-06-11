@@ -149,12 +149,18 @@ function groupCard(g: PublicQueueGroup): HTMLElement {
 	const titleLine = el("h3", { className: "qc-title", text: g.title });
 
 	const metaChildren: (HTMLElement | string)[] = [];
+	if (g.completed) metaChildren.push(el("span", { className: "qc-complete-badge", text: "✓ Completed" }));
 	if (g.season) metaChildren.push(el("span", { className: "qc-season", text: g.season }));
 	metaChildren.push(el("span", { className: "qc-count", text: `${g.total} ${g.total === 1 ? "episode" : "episodes"}` }));
 
 	const bar = el("div", {
 		className: "qc-bar",
-		children: [el("div", { className: `qc-bar-fill${g.active ? " is-active" : ""}`, attrs: { style: `width:${g.progress}%` } })],
+		children: [
+			el("div", {
+				className: `qc-bar-fill${g.active ? " is-active" : ""}${g.completed ? " is-complete" : ""}`,
+				attrs: { style: `width:${g.progress}%` },
+			}),
+		],
 	});
 
 	const footChildren: (HTMLElement | string)[] = [];
@@ -165,11 +171,11 @@ function groupCard(g: PublicQueueGroup): HTMLElement {
 
 	const eta = el("span", {
 		className: "qc-eta",
-		text: g.etaMs !== null ? `~${formatDurationShort(g.etaMs)} left` : "—",
+		text: g.completed ? "awaiting upload" : g.etaMs !== null ? `~${formatDurationShort(g.etaMs)} left` : "—",
 	});
 
 	return el("div", {
-		className: `queue-card${g.active ? " is-active" : ""}`,
+		className: `queue-card${g.active ? " is-active" : ""}${g.completed ? " is-complete" : ""}`,
 		children: [
 			titleLine,
 			el("div", { className: "qc-meta", children: metaChildren }),
