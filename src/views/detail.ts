@@ -1,8 +1,18 @@
-import { getRelease, torrentUrl, type Category, type ReleaseDetail, type ReleaseFile } from "../api.ts";
-import { parseMediaInfo, formatValue, type MediaInfoSection } from "../mediainfo.ts";
+import {
+	getEpisodeMediainfo,
+	getMediaManifest,
+	getRelease,
+	torrentUrl,
+	type Category,
+	type MediaEpisode,
+	type ReleaseDetail,
+	type ReleaseFile,
+} from "../api.ts";
+import { parseMediaInfo, formatValue, type MediaInfoSection, getField } from "../mediainfo.ts";
 import { decodeRabbitSettings, looksLikeSettingsCode, type DecodedSettings } from "../rabbit-settings.ts";
 import { el, formatDate, toast, categoryLabel, formatBytes } from "../utils.ts";
 import { mountComments } from "./comments.ts";
+import { buildScreenshotsCard } from "./media.ts";
 
 // Fields we like to surface in each card
 
@@ -47,12 +57,72 @@ const DISPLAY_NAMES: Record<string, string> = {
 	"RABBIT_ENCODER/SETTINGS": "Rabbit Encoder Settings",
 };
 
+interface FilesCardOptions {
+	mediaByStem: Map<string, MediaEpisode>;
+	selected: string | null;
+	onSelect: (stem: string) => void;
+}
+
+function fileStem(file: ReleaseFile): string {
+	const base = Array.isArray(file.path) ? (file.path[file.path.length - 1] ?? "") : String(file.path ?? "");
+	return base.replace(/\.[a-z0-9]{2,5}$/i, "");
+}
+
 export async function renderDetail(app: HTMLElement, category: Category, id: number): Promise<void> {
 	app.replaceChildren(el("div", { className: "loading-screen", text: "Loading…" }));
 
 	try {
 		const release = await getRelease(category, id);
+
+		const manifest = await getMediaManifest(category, id); // [] for old releases
+		const mediaByStem = new Map(manifest.map((e) => [e.name, e]));
+
+		// Slots that get swapped when the user picks another episode
+		const screensSlot = el("div", { className: "screens-slot" });
+		const mediainfoSlot = el("div", { className: "mediainfo-slot" });
+
 		const info = parseMediaInfo(release.mediainfo);
+		const completeName = getField(info.general, "Complete name") ?? "";
+		const dbStem = completeName.replace(/\.[a-z0-9]{2,5}$/i, "");
+		let selected: string | null = mediaByStem.has(dbStem) ? dbStem : (manifest.find((e) => e.mediainfo)?.name ?? null);
+
+		const mediainfoCache = new Map<string, string>();
+		if (selected) mediainfoCache.set(selected, release.mediainfo);
+
+		let filesSlot: HTMLElement;
+
+		async function selectEpisode(stem: string): Promise<void> {
+			const ep = mediaByStem.get(stem);
+			if (!ep || stem === selected) return;
+			try {
+				let text = mediainfoCache.get(stem);
+				if (text === undefined && ep.mediainfo) {
+					text = await getEpisodeMediainfo(category, id, stem);
+					mediainfoCache.set(stem, text);
+				}
+				selected = stem;
+				if (text !== undefined) renderMediaInfoSections(mediainfoSlot, text);
+				renderScreens();
+				renderFiles();
+			} catch {
+				toast("Could not load mediainfo for this episode");
+			}
+		}
+
+		function renderScreens(): void {
+			const card = selected ? buildScreenshotsCard(category, id, mediaByStem.get(selected) ?? null) : null;
+			screensSlot.replaceChildren(...(card ? [card] : []));
+		}
+
+		function renderFiles(): void {
+			const card = buildFilesCard(release.files, { mediaByStem, selected, onSelect: selectEpisode });
+			filesSlot.replaceChildren(...(card ? [card] : []));
+		}
+
+		filesSlot = el("div", { className: "files-slot" });
+		renderMediaInfoSections(mediainfoSlot, release.mediainfo);
+		renderScreens();
+		renderFiles();
 
 		// Header
 		const titleParts = [release.title];
@@ -154,73 +224,8 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 		// Tracker stats (seeders / leechers / completed)
 		const trackerStats = buildTrackerStats(release);
 
-		// File list from the .torrent
-		const filesCard = buildFilesCard(release.files);
-
-		// ----- Build cards grouped by type -----
-		const generalVideoCards: HTMLElement[] = [];
-
-		// General card
-		if (info.general) {
-			const settingsField = info.general.fields.find((f) => f.key.toUpperCase() === "RABBIT_ENCODER/SETTINGS");
-			const decoded = settingsField && looksLikeSettingsCode(settingsField.value) ? decodeRabbitSettings(settingsField.value) : null;
-
-			const generalKeys = decoded ? GENERAL_KEYS.filter((k) => k.toUpperCase() !== "RABBIT_ENCODER/SETTINGS") : GENERAL_KEYS;
-			generalVideoCards.push(buildCard("📄 General", info.general, generalKeys));
-
-			if (decoded) generalVideoCards.push(buildSettingsCard(decoded));
-		}
-
-		// Video cards
-		info.video.forEach((v, i) => {
-			const suffix = info.video.length > 1 ? ` #${i + 1}` : "";
-			generalVideoCards.push(buildCard(`🎞️ Video${suffix}`, v, VIDEO_KEYS));
-		});
-
-		// Audio cards
-		const audioCards = info.audio.map((a, i) => {
-			const lang = a.fields.find((f) => f.key === "Language")?.value;
-			const label = info.audio.length > 1 ? ` #${i + 1}` : "";
-			const title = `🔊 Audio${label}`;
-			return buildCard(title, a, AUDIO_KEYS, lang);
-		});
-
-		// Subtitles (Text) cards
-		const textCards = info.text.map((t, i) => {
-			const lang = t.fields.find((f) => f.key === "Language")?.value;
-			const label = info.text.length > 1 ? ` #${i + 1}` : "";
-			return buildCard(`💬 Subtitles${label}`, t, TEXT_KEYS, lang);
-		});
-
-		// ----- Create separate grids -----
-		const generalVideoGrid = generalVideoCards.length ? el("div", { className: "info-grid", children: generalVideoCards }) : null;
-
-		const audioGrid = audioCards.length ? el("div", { className: "info-grid", children: audioCards }) : null;
-
-		const textGrid = textCards.length ? el("div", { className: "info-grid", children: textCards }) : null;
-
-		// Chapters if present
-		const chaptersCard = info.menu.length > 0 ? buildChaptersCard(info.menu[0]!) : null;
-
-		// Raw mediainfo
-		const rawDetails = el("details", {
-			className: "mediainfo-raw",
-			children: [el("summary", { text: "View raw MediaInfo" }), el("pre", { text: release.mediainfo })],
-		});
-
 		// Assemble main content
-		const children: (HTMLElement | null)[] = [
-			backLink,
-			header,
-			trackerStats,
-			seasonNav,
-			generalVideoGrid,
-			audioGrid,
-			textGrid,
-			chaptersCard,
-			filesCard,
-			rawDetails,
-		];
+		const children: (HTMLElement | null)[] = [backLink, header, trackerStats, seasonNav, filesSlot, screensSlot, mediainfoSlot];
 		app.replaceChildren(...(children.filter(Boolean) as HTMLElement[]));
 
 		await mountComments(app, release.category, release.id);
@@ -406,24 +411,49 @@ function buildTrackerStats(release: ReleaseDetail): HTMLElement | null {
 	});
 }
 
-function buildFilesCard(files: ReleaseFile[]): HTMLElement | null {
+function buildFilesCard(files: ReleaseFile[], opts: FilesCardOptions): HTMLElement | null {
 	if (!files || files.length === 0) return null;
 
 	const totalSize = files.reduce((sum, f) => sum + (Number.isFinite(f.length) ? f.length : 0), 0);
 
 	const rows = files.map((file) => {
 		const fullPath = Array.isArray(file.path) ? file.path.join("/") : String(file.path ?? "");
-		return el("li", {
-			className: "file-row",
-			children: [
-				el("span", {
-					className: "file-name",
-					text: fullPath,
-					attrs: { title: fullPath },
-				}),
-				el("span", { className: "file-size", text: formatBytes(file.length) }),
-			],
+		const stem = fileStem(file);
+		const ep = opts.mediaByStem.get(stem);
+		const isActive = ep !== undefined && stem === opts.selected;
+
+		const children: HTMLElement[] = [el("span", { className: "file-name", text: fullPath, attrs: { title: fullPath } })];
+
+		const badges: HTMLElement[] = [];
+		if (ep?.screenshots.length) {
+			//badges.push(el("span", { className: "file-badge", attrs: { title: `${ep.screenshots.length} screenshots` }, text: `📷 ${ep.screenshots.length}` }));
+		}
+		if (isActive) {
+			//badges.push(el("span", { className: "file-badge file-badge-active", text: "VIEWING" }));
+		}
+		if (badges.length) children.push(el("span", { className: "file-badges", children: badges }));
+		children.push(el("span", { className: "file-size", text: formatBytes(file.length) }));
+
+		const row = el("li", {
+			className: `file-row${ep ? " has-media" : ""}${isActive ? " active" : ""}`,
+			children,
 		});
+
+		if (ep) {
+			row.setAttribute("role", "button");
+			row.setAttribute("tabindex", "0");
+			row.setAttribute("aria-pressed", String(isActive));
+			row.setAttribute("title", "Show mediainfo and screenshots for this episode");
+			row.addEventListener("click", () => opts.onSelect(stem));
+			row.addEventListener("keydown", (e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					opts.onSelect(stem);
+				}
+			});
+		}
+
+		return row;
 	});
 
 	const countLabel = files.length === 1 ? "1 file" : `${files.length.toLocaleString()} files`;
@@ -434,19 +464,72 @@ function buildFilesCard(files: ReleaseFile[]): HTMLElement | null {
 				className: "files-summary-left",
 				children: [el("span", { className: "files-summary-caret" }), el("span", { className: "files-summary-title", text: "📁 Files" })],
 			}),
-			el("span", {
-				className: "files-summary-meta",
-				text: `${countLabel} · ${formatBytes(totalSize)}`,
-			}),
+			el("span", { className: "files-summary-meta", text: `${countLabel} · ${formatBytes(totalSize)}` }),
 		],
 	});
 
-	const attrs: Record<string, string> = {};
-	attrs.open = "";
-
 	return el("details", {
 		className: "files-card",
-		attrs,
+		attrs: { open: "" },
 		children: [summary, el("ul", { className: "file-list", children: rows })],
 	});
+}
+
+function renderMediaInfoSections(slot: HTMLElement, mediainfoText: string): void {
+	const info = parseMediaInfo(mediainfoText);
+
+	// General + Rabbit Encoder settings
+	const generalVideoCards: HTMLElement[] = [];
+
+	if (info.general) {
+		const settingsField = info.general.fields.find((f) => f.key.toUpperCase() === "RABBIT_ENCODER/SETTINGS");
+		const decoded = settingsField && looksLikeSettingsCode(settingsField.value) ? decodeRabbitSettings(settingsField.value) : null;
+
+		// When the settings code decodes, hide the raw code row from the
+		// General card and show the dedicated settings card instead.
+		const generalKeys = decoded ? GENERAL_KEYS.filter((k) => k.toUpperCase() !== "RABBIT_ENCODER/SETTINGS") : GENERAL_KEYS;
+		generalVideoCards.push(buildCard("📄 General", info.general, generalKeys));
+
+		if (decoded) generalVideoCards.push(buildSettingsCard(decoded));
+	}
+
+	// Video cards
+	info.video.forEach((v, i) => {
+		const suffix = info.video.length > 1 ? ` #${i + 1}` : "";
+		generalVideoCards.push(buildCard(`🎞️ Video${suffix}`, v, VIDEO_KEYS));
+	});
+
+	// Audio cards
+	const audioCards = info.audio.map((a, i) => {
+		const lang = a.fields.find((f) => f.key === "Language")?.value;
+		const label = info.audio.length > 1 ? ` #${i + 1}` : "";
+		const title = `🔊 Audio${label}`;
+		return buildCard(title, a, AUDIO_KEYS, lang);
+	});
+
+	// Subtitles (Text) cards
+	const textCards = info.text.map((t, i) => {
+		const lang = t.fields.find((f) => f.key === "Language")?.value;
+		const label = info.text.length > 1 ? ` #${i + 1}` : "";
+		return buildCard(`💬 Subtitles${label}`, t, TEXT_KEYS, lang);
+	});
+
+	// Create separate grids
+	const generalVideoGrid = generalVideoCards.length ? el("div", { className: "info-grid", children: generalVideoCards }) : null;
+
+	const audioGrid = audioCards.length ? el("div", { className: "info-grid", children: audioCards }) : null;
+
+	const textGrid = textCards.length ? el("div", { className: "info-grid", children: textCards }) : null;
+
+	// Chapters if present
+	const chaptersCard = info.menu.length > 0 ? buildChaptersCard(info.menu[0]!) : null;
+
+	// Raw mediainfo
+	const rawDetails = el("details", {
+		className: "mediainfo-raw",
+		children: [el("summary", { text: "View raw MediaInfo" }), el("pre", { text: mediainfoText })],
+	});
+
+	const sections: (HTMLElement | null)[] = [generalVideoGrid, audioGrid, textGrid, chaptersCard, rawDetails];
+	slot.replaceChildren(...(sections.filter(Boolean) as HTMLElement[]));
 }

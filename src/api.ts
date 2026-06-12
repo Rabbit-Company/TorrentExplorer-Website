@@ -120,6 +120,12 @@ export interface EncoderQueueResponse {
 	encoders: PublicEncoder[];
 }
 
+export interface MediaEpisode {
+	name: string; // original episode stem. Example: "Show (2017) - S01E03"
+	mediainfo: boolean;
+	screenshots: string[]; // stored filenames
+}
+
 export class RateLimitError extends Error {
 	readonly retryAfter: number;
 
@@ -266,6 +272,27 @@ export async function deleteComment(category: Category, id: number, commentId: n
 		} catch {}
 		throw new Error(message);
 	}
+}
+
+export async function getMediaManifest(category: Category, id: number): Promise<MediaEpisode[]> {
+	try {
+		const res = await fetch(`${apiUrl}/api/media/${category}/${id}`);
+		if (!res.ok) return [];
+		const data = (await res.json()) as { episodes?: MediaEpisode[] };
+		return Array.isArray(data.episodes) ? data.episodes : [];
+	} catch {
+		return [];
+	}
+}
+
+export async function getEpisodeMediainfo(category: Category, id: number, ep: string): Promise<string> {
+	const res = await fetch(`${apiUrl}/api/media/${category}/${id}/mediainfo?ep=${encodeURIComponent(ep)}`);
+	if (!res.ok) throw new Error(`Failed to load mediainfo (${res.status})`);
+	return res.text();
+}
+
+export function screenshotUrl(category: Category, id: number, file: string): string {
+	return `${apiUrl}/api/media/${category}/${id}/screenshot?file=${encodeURIComponent(file)}`;
 }
 
 export function torrentUrl(category: Category, id: number): string {
