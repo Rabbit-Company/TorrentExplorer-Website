@@ -1,6 +1,6 @@
 {
 	"name": "torrent-explorer-web",
-	"version": "1.2.0",
+	"version": "1.2.1",
 	"description": "Static frontend for the torrent explorer",
 	"type": "module",
 	"scripts": {

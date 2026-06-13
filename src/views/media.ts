@@ -9,23 +9,34 @@ import { el } from "../utils.ts";
  * user switches episodes in the file explorer.
  */
 
+const imageCache = new Map<string, HTMLImageElement>();
+
+function getSharedImage(url: string): HTMLImageElement {
+	let img = imageCache.get(url);
+	if (!img) {
+		img = el("img", { attrs: { decoding: "async" } }) as HTMLImageElement;
+		img.src = url; // set exactly once, ever
+		imageCache.set(url, img);
+	}
+	return img;
+}
+
 export function buildScreenshotsCard(category: Category, id: number, episode: MediaEpisode | null): HTMLElement | null {
 	if (!episode || episode.screenshots.length === 0) return null;
 
 	const urls = episode.screenshots.map((file) => screenshotUrl(category, id, file));
 
-	const thumbs = urls.map((url, i) =>
-		el("button", {
+	const thumbs = urls.map((url, i) => {
+		const img = getSharedImage(url);
+		img.alt = `Screenshot ${i + 1}`;
+		const btn = el("button", {
 			className: "screens-thumb",
 			attrs: { type: "button", "aria-label": `Open screenshot ${i + 1} of ${urls.length}` },
-			children: [
-				el("img", {
-					attrs: { src: url, alt: `Screenshot ${i + 1}`, loading: "lazy", decoding: "async" },
-				}),
-			],
-		}),
-	);
-	thumbs.forEach((btn, i) => btn.addEventListener("click", () => openLightbox(urls, i)));
+			children: [img],
+		});
+		btn.addEventListener("click", () => openLightbox(urls, i));
+		return btn;
+	});
 
 	return el("div", {
 		className: "info-card screens-card",
@@ -38,34 +49,47 @@ export function openLightbox(urls: string[], startIndex: number): void {
 	if (urls.length === 0) return;
 	let index = Math.min(Math.max(startIndex, 0), urls.length - 1);
 
-	const img = el("img", { className: "lb-img", attrs: { alt: "Screenshot", decoding: "async" } }) as HTMLImageElement;
+	// Borrow the very elements the thumbnails already loaded. Record where each
+	// one lives so it can be returned to its thumbnail when the viewer closes.
+	const imgs = urls.map(getSharedImage);
+	const origins = imgs.map((im) => im.parentElement);
+
+	imgs.forEach((im) => im.classList.add("lb-img"));
+
 	const counter = el("div", { className: "lb-counter" });
 	const prevBtn = navButton("‹", "Previous screenshot", "lb-prev");
 	const nextBtn = navButton("›", "Next screenshot", "lb-next");
 	const closeBtn = navButton("✕", "Close", "lb-close");
 
+	const stage = el("div", { className: "lb-stage", children: imgs });
+
 	const overlay = el("div", {
 		className: "lightbox",
 		attrs: { role: "dialog", "aria-modal": "true", "aria-label": "Screenshot viewer", tabindex: "-1" },
-		children: [el("div", { className: "lb-stage", children: [img] }), prevBtn, nextBtn, closeBtn, counter],
+		children: [stage, prevBtn, nextBtn, closeBtn, counter],
 	});
 
 	function show(i: number): void {
 		index = (i + urls.length) % urls.length;
-		img.src = urls[index]!;
+		// Only toggle visibility (no src changes, no new requests)
+		imgs.forEach((im, k) => {
+			im.style.display = k === index ? "" : "none";
+		});
 		counter.textContent = `${index + 1} / ${urls.length}`;
 		prevBtn.style.visibility = urls.length > 1 ? "visible" : "hidden";
 		nextBtn.style.visibility = urls.length > 1 ? "visible" : "hidden";
-		// Preload neighbours so arrow navigation feels instant.
-		for (const j of [index + 1, index - 1]) {
-			if (urls.length > 1) new Image().src = urls[(j + urls.length) % urls.length]!;
-		}
 	}
 
 	function close(): void {
 		document.removeEventListener("keydown", onKey);
 		document.body.style.overflow = prevOverflow;
 		overlay.remove();
+		// Hand each image back to its thumbnail exactly as it was.
+		imgs.forEach((im, k) => {
+			im.classList.remove("lb-img");
+			im.style.display = "";
+			origins[k]?.appendChild(im);
+		});
 		opener?.focus?.();
 	}
 

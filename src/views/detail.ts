@@ -63,6 +63,11 @@ interface FilesCardOptions {
 	onSelect: (stem: string) => void;
 }
 
+interface FilesCard {
+	element: HTMLElement;
+	setSelected(stem: string | null): void;
+}
+
 function fileStem(file: ReleaseFile): string {
 	const base = Array.isArray(file.path) ? (file.path[file.path.length - 1] ?? "") : String(file.path ?? "");
 	return base.replace(/\.[a-z0-9]{2,5}$/i, "");
@@ -80,6 +85,7 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 		// Slots that get swapped when the user picks another episode
 		const screensSlot = el("div", { className: "screens-slot" });
 		const mediainfoSlot = el("div", { className: "mediainfo-slot" });
+		const filesSlot = el("div", { className: "files-slot" });
 
 		const info = parseMediaInfo(release.mediainfo);
 		const completeName = getField(info.general, "Complete name") ?? "";
@@ -89,7 +95,7 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 		const mediainfoCache = new Map<string, string>();
 		if (selected) mediainfoCache.set(selected, release.mediainfo);
 
-		let filesSlot: HTMLElement;
+		let filesCard: FilesCard | null = null;
 
 		async function selectEpisode(stem: string): Promise<void> {
 			const ep = mediaByStem.get(stem);
@@ -103,7 +109,7 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 				selected = stem;
 				if (text !== undefined) renderMediaInfoSections(mediainfoSlot, text);
 				renderScreens();
-				renderFiles();
+				filesCard?.setSelected(selected);
 			} catch {
 				toast("Could not load mediainfo for this episode");
 			}
@@ -114,15 +120,11 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 			screensSlot.replaceChildren(...(card ? [card] : []));
 		}
 
-		function renderFiles(): void {
-			const card = buildFilesCard(release.files, { mediaByStem, selected, onSelect: selectEpisode });
-			filesSlot.replaceChildren(...(card ? [card] : []));
-		}
+		filesCard = buildFilesCard(release.files, { mediaByStem, selected, onSelect: selectEpisode });
+		if (filesCard) filesSlot.appendChild(filesCard.element);
 
-		filesSlot = el("div", { className: "files-slot" });
 		renderMediaInfoSections(mediainfoSlot, release.mediainfo);
 		renderScreens();
-		renderFiles();
 
 		// Header
 		const titleParts = [release.title];
@@ -411,16 +413,17 @@ function buildTrackerStats(release: ReleaseDetail): HTMLElement | null {
 	});
 }
 
-function buildFilesCard(files: ReleaseFile[], opts: FilesCardOptions): HTMLElement | null {
+function buildFilesCard(files: ReleaseFile[], opts: FilesCardOptions): FilesCard | null {
 	if (!files || files.length === 0) return null;
 
 	const totalSize = files.reduce((sum, f) => sum + (Number.isFinite(f.length) ? f.length : 0), 0);
+
+	const rowByStem = new Map<string, HTMLElement>();
 
 	const rows = files.map((file) => {
 		const fullPath = Array.isArray(file.path) ? file.path.join("/") : String(file.path ?? "");
 		const stem = fileStem(file);
 		const ep = opts.mediaByStem.get(stem);
-		const isActive = ep !== undefined && stem === opts.selected;
 
 		const children: HTMLElement[] = [el("span", { className: "file-name", text: fullPath, attrs: { title: fullPath } })];
 
@@ -428,21 +431,18 @@ function buildFilesCard(files: ReleaseFile[], opts: FilesCardOptions): HTMLEleme
 		if (ep?.screenshots.length) {
 			//badges.push(el("span", { className: "file-badge", attrs: { title: `${ep.screenshots.length} screenshots` }, text: `📷 ${ep.screenshots.length}` }));
 		}
-		if (isActive) {
-			//badges.push(el("span", { className: "file-badge file-badge-active", text: "VIEWING" }));
-		}
 		if (badges.length) children.push(el("span", { className: "file-badges", children: badges }));
 		children.push(el("span", { className: "file-size", text: formatBytes(file.length) }));
 
 		const row = el("li", {
-			className: `file-row${ep ? " has-media" : ""}${isActive ? " active" : ""}`,
+			className: `file-row${ep ? " has-media" : ""}`,
 			children,
 		});
 
 		if (ep) {
+			rowByStem.set(stem, row);
 			row.setAttribute("role", "button");
 			row.setAttribute("tabindex", "0");
-			row.setAttribute("aria-pressed", String(isActive));
 			row.setAttribute("title", "Show mediainfo and screenshots for this episode");
 			row.addEventListener("click", () => opts.onSelect(stem));
 			row.addEventListener("keydown", (e) => {
@@ -456,6 +456,16 @@ function buildFilesCard(files: ReleaseFile[], opts: FilesCardOptions): HTMLEleme
 		return row;
 	});
 
+	const setSelected = (sel: string | null): void => {
+		for (const [stem, row] of rowByStem) {
+			const active = stem === sel;
+			row.classList.toggle("active", active);
+			row.setAttribute("aria-pressed", String(active));
+		}
+	};
+
+	setSelected(opts.selected);
+
 	const countLabel = files.length === 1 ? "1 file" : `${files.length.toLocaleString()} files`;
 
 	const summary = el("summary", {
@@ -468,11 +478,13 @@ function buildFilesCard(files: ReleaseFile[], opts: FilesCardOptions): HTMLEleme
 		],
 	});
 
-	return el("details", {
+	const element = el("details", {
 		className: "files-card",
 		attrs: { open: "" },
 		children: [summary, el("ul", { className: "file-list", children: rows })],
 	});
+
+	return { element, setSelected };
 }
 
 function renderMediaInfoSections(slot: HTMLElement, mediainfoText: string): void {
