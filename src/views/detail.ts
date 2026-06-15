@@ -319,6 +319,23 @@ function buildCard(title: string, section: MediaInfoSection, preferredKeys: stri
 	});
 }
 
+/** Group a raw CLI string into "flag value" chips, e.g.
+ *  "--film-grain 4 --tune 2" → ["--film-grain 4", "--tune 2"]. */
+function splitFlags(raw: string): string[] {
+	const chips: string[] = [];
+	for (const tok of raw.split(/\s+/).filter(Boolean)) {
+		const prev = chips[chips.length - 1];
+		if (tok.startsWith("-")) {
+			chips.push(tok);
+		} else if (prev && prev.startsWith("-") && !prev.includes(" ")) {
+			chips[chips.length - 1] = `${prev} ${tok}`;
+		} else {
+			chips.push(tok);
+		}
+	}
+	return chips.length ? chips : [raw];
+}
+
 function buildSettingsCard(decoded: DecodedSettings): HTMLElement {
 	const rows: HTMLElement[] = [];
 
@@ -328,12 +345,24 @@ function buildSettingsCard(decoded: DecodedSettings): HTMLElement {
 			children: [el("span", { className: "label", text: label }), el("span", { className: "value", text: value })],
 		});
 
+	const flagRow = (label: string, value: string): HTMLElement =>
+		el("div", {
+			className: "info-row settings-flag-row",
+			children: [
+				el("span", { className: "label", text: label }),
+				el("span", {
+					className: "value settings-flags",
+					children: splitFlags(value).map((flag) => el("code", { className: "settings-flag", text: flag })),
+				}),
+			],
+		});
+
 	if (decoded.newerFormat) rows.push(row("Format", `RE${decoded.version} (shown best-effort)`));
 
 	if (decoded.items.length === 0) {
 		rows.push(row("Settings", "All defaults"));
 	} else {
-		for (const item of decoded.items) rows.push(row(item.label, item.value));
+		for (const item of decoded.items) rows.push(item.mono ? flagRow(item.label, item.value) : row(item.label, item.value));
 	}
 
 	return el("div", {

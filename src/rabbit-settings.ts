@@ -10,6 +10,8 @@
 export interface DecodedSetting {
 	label: string;
 	value: string;
+	/** Render the value as monospace flag chips (e.g. raw encoder CLI flags). */
+	mono?: boolean;
 }
 
 export interface DecodedSettings {
@@ -159,8 +161,8 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 		}
 	}
 
-	const push = (label: string, value: string | null | undefined) => {
-		if (value !== null && value !== undefined && value !== "") items.push({ label, value });
+	const push = (label: string, value: string | null | undefined, mono = false) => {
+		if (value !== null && value !== undefined && value !== "") items.push({ label, value, mono });
 	};
 
 	// Core
@@ -231,6 +233,10 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 	// Languages
 	if (audioLangs.length) push("Audio languages", audioLangs.join(", "));
 	if (subtitleLangs.length) push("Subtitle languages", subtitleLangs.join(", "));
+
+	if (core) {
+		push("Custom parameters", core.cp ? unesc(core.cp) : null, true);
+	}
 
 	// VapourSynth filter chain (one row per active filter, in order)
 	let n = 0;

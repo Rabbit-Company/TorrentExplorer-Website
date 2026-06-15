@@ -630,6 +630,28 @@ main {
 	cursor: not-allowed;
 }
 
+/* Custom parameter flags in the Rabbit Encoder Settings card */
+.settings-flag-row {
+	align-items: flex-start;
+}
+.settings-flags {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	justify-content: flex-end;
+}
+.settings-flag {
+	font-family: var(--font-mono);
+	font-size: 12px;
+	line-height: 1.6;
+	background: var(--bg);
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	padding: 2px 8px;
+	color: var(--accent);
+	white-space: nowrap;
+}
+
 /* Info grid */
 .info-grid {
 	display: grid;
