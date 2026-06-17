@@ -1,5 +1,5 @@
-import { getInfo, submitRequest, RateLimitError, type RequestKind } from "../api.ts";
-import { el, toast } from "../utils.ts";
+import { getInfo, submitRequest, RateLimitError, type RequestKind, listRequests, deleteRequest, tvdbUrl, type RequestListItem, getOwnerToken } from "../api.ts";
+import { el, formatDate, toast } from "../utils.ts";
 
 interface KindOption {
 	value: RequestKind;
@@ -93,6 +93,7 @@ export async function renderRequest(app: HTMLElement): Promise<void> {
 			selectedKind = opt.value;
 			refreshKindButtons();
 			clearFieldError();
+			void loadRequests();
 		});
 		kindButtons.push(btn);
 		segmented.appendChild(btn);
@@ -294,6 +295,81 @@ export async function renderRequest(app: HTMLElement): Promise<void> {
 		],
 	});
 
+	// Requests table
+	const requestsStatus = el("div", { className: "request-list-status", text: "Loading requests…" });
+	const requestsTableSlot = el("div", { className: "request-list-slot" });
+
+	const requestsSection = el("section", {
+		className: "request-list",
+		children: [el("h2", { className: "request-list-title", text: "Most requested" }), requestsStatus, requestsTableSlot],
+	});
+
+	const buildRequestsTable = (items: RequestListItem[], owner: boolean): HTMLElement => {
+		const headCells = [el("th", { text: "ID" }), el("th", { text: "Requests" }), el("th", { text: "First requested" }), el("th", { text: "Last requested" })];
+		if (owner) headCells.push(el("th", { className: "request-th-actions", text: "" }));
+
+		const rows = items.map((item) => {
+			const idLink = el("a", {
+				className: "request-id-link",
+				attrs: { href: tvdbUrl(item.kind, item.id), target: "_blank", rel: "noopener" },
+				text: String(item.id),
+			});
+
+			const cells: HTMLElement[] = [
+				el("td", { children: [idLink] }),
+				el("td", { className: "request-td-count", text: String(item.counter) }),
+				el("td", { text: formatDate(item.created) }),
+				el("td", { text: formatDate(item.last_updated) }),
+			];
+
+			if (owner) {
+				const delBtn = el("button", {
+					className: "request-delete",
+					attrs: { type: "button", title: "Delete request", "aria-label": `Delete request ${item.id}` },
+					text: "Delete",
+				}) as HTMLButtonElement;
+				delBtn.addEventListener("click", async () => {
+					if (!window.confirm(`Delete request for TheTVDB ID ${item.id}?`)) return;
+					delBtn.disabled = true;
+					try {
+						await deleteRequest(item.kind, item.id);
+						toast("Request deleted", "success");
+						void loadRequests();
+					} catch (err) {
+						toast(err instanceof Error ? err.message : "Failed to delete", "error");
+						delBtn.disabled = false;
+					}
+				});
+				cells.push(el("td", { className: "request-td-actions", children: [delBtn] }));
+			}
+
+			return el("tr", { children: cells });
+		});
+
+		return el("table", {
+			className: "request-table",
+			children: [el("thead", { children: [el("tr", { children: headCells })] }), el("tbody", { children: rows })],
+		});
+	};
+
+	const loadRequests = async (): Promise<void> => {
+		const owner = getOwnerToken() !== null;
+		requestsStatus.textContent = "Loading requests…";
+		try {
+			const { requests } = await listRequests(selectedKind);
+			if (requests.length === 0) {
+				requestsStatus.textContent = "No requests yet for this type.";
+				requestsTableSlot.replaceChildren();
+				return;
+			}
+			requestsStatus.textContent = "";
+			requestsTableSlot.replaceChildren(buildRequestsTable(requests, owner));
+		} catch (err) {
+			requestsStatus.textContent = `⚠️ ${err instanceof Error ? err.message : "Failed to load requests"}`;
+			requestsTableSlot.replaceChildren();
+		}
+	};
+
 	app.replaceChildren(
 		el("h1", { className: "page-title", text: "Request a title" }),
 		el("p", {
@@ -301,7 +377,9 @@ export async function renderRequest(app: HTMLElement): Promise<void> {
 			children: ["Want something added? Drop the TheTVDB ID below. You can request ", el("strong", { text: windowPhrase(windowMinutes) }), "."],
 		}),
 		card,
+		requestsSection,
 	);
 
 	refreshKindButtons();
+	void loadRequests();
 }

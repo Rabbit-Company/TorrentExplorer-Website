@@ -1465,6 +1465,49 @@ details.mediainfo-raw pre {
 	}
 }
 
+.request-list {
+	margin-top: 2rem;
+}
+.request-list-title {
+	font-size: 1.1rem;
+	margin-bottom: 0.75rem;
+}
+.request-list-status {
+	color: var(--muted, #888);
+	font-size: 0.9rem;
+	margin-bottom: 0.5rem;
+}
+.request-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.92rem;
+}
+.request-table th,
+.request-table td {
+	text-align: left;
+	padding: 0.5rem 0.6rem;
+	border-bottom: 1px solid var(--border, #2a2a2a);
+}
+.request-table th {
+	font-weight: 600;
+	color: var(--muted, #999);
+}
+.request-td-count {
+	font-variant-numeric: tabular-nums;
+}
+.request-id-link {
+	font-variant-numeric: tabular-nums;
+}
+.request-td-actions,
+.request-th-actions {
+	text-align: right;
+	width: 1%;
+	white-space: nowrap;
+}
+.request-delete {
+	cursor: pointer;
+}
+
 /* Comments */
 .comments {
 	margin-top: 32px;

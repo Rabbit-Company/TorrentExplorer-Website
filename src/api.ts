@@ -73,6 +73,18 @@ export interface RequestResult {
 	last_updated: number;
 }
 
+export interface RequestListItem {
+	id: number; // TheTVDB ID
+	kind: RequestKind;
+	counter: number;
+	created: number;
+	last_updated: number;
+}
+
+export interface RequestListResponse {
+	requests: RequestListItem[];
+}
+
 export interface CommentReply {
 	id: number;
 	author: string;
@@ -211,6 +223,30 @@ export async function submitRequest(kind: RequestKind, id: number): Promise<Requ
 	}
 
 	return res.json() as Promise<RequestResult>;
+}
+
+export function listRequests(kind?: RequestKind): Promise<RequestListResponse> {
+	const qs = kind ? `?kind=${kind}` : "";
+	return request<RequestListResponse>(`/api/requests${qs}`);
+}
+
+export async function deleteRequest(kind: RequestKind, id: number): Promise<void> {
+	const res = await fetch(`${apiUrl}/api/requests/${kind}/${id}`, {
+		method: "DELETE",
+		headers: { ...ownerHeaders() },
+	});
+	if (!res.ok) {
+		let message = `Request failed: ${res.status}`;
+		try {
+			const b = (await res.json()) as { error?: string };
+			if (b.error) message = b.error;
+		} catch {}
+		throw new Error(message);
+	}
+}
+
+export function tvdbUrl(kind: RequestKind, id: number): string {
+	return `https://thetvdb.com/dereferrer/${kind === "movies" ? "movie" : "series"}/${id}`;
 }
 
 export function getOwnerToken(): string | null {
