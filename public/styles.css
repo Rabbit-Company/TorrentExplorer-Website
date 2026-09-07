@@ -1993,18 +1993,24 @@ details.mediainfo-raw pre {
 	gap: 10px;
 }
 .screens-thumb {
-	display: block;
+	display: flex;
+	align-items: center;
+	justify-content: center;
 	padding: 0;
 	margin: 0;
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
-	background: var(--bg);
+	background: #05070a;
 	overflow: hidden;
-	cursor: zoom-in;
+	cursor: pointer;
 	aspect-ratio: 16 / 9;
 	transition:
 		border-color 0.15s,
 		transform 0.15s;
+}
+.screens-thumb.is-revealed {
+	background: var(--bg);
+	cursor: zoom-in;
 }
 .screens-thumb:hover {
 	border-color: var(--accent);
@@ -2019,6 +2025,29 @@ details.mediainfo-raw pre {
 	height: 100%;
 	object-fit: cover;
 	display: block;
+}
+.screens-reveal {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 38px;
+	height: 38px;
+	border-radius: 50%;
+	border: 1px solid var(--border-strong);
+	background: var(--bg-elevated);
+	font-size: 16px;
+	line-height: 1;
+	opacity: 0.65;
+	transition:
+		opacity 0.15s,
+		border-color 0.15s,
+		transform 0.15s;
+}
+.screens-thumb:hover .screens-reveal,
+.screens-thumb:focus-visible .screens-reveal {
+	opacity: 1;
+	border-color: var(--accent);
+	transform: scale(1.08);
 }
 @media (max-width: 640px) {
 	.screens-grid {
@@ -2051,6 +2080,7 @@ details.mediainfo-raw pre {
 		animation: none;
 	}
 	.screens-thumb,
+	.screens-reveal,
 	.file-row.has-media {
 		transition: none;
 	}

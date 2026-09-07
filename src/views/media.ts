@@ -15,9 +15,15 @@ function getSharedImage(url: string): HTMLImageElement {
 	let img = imageCache.get(url);
 	if (!img) {
 		img = el("img", { attrs: { decoding: "async" } }) as HTMLImageElement;
-		img.src = url; // set exactly once, ever
 		imageCache.set(url, img);
 	}
+	return img;
+}
+
+/** Starts the download the first time it is called for a url (never re-requests). */
+function loadSharedImage(url: string): HTMLImageElement {
+	const img = getSharedImage(url);
+	if (!img.src) img.src = url;
 	return img;
 }
 
@@ -26,17 +32,42 @@ export function buildScreenshotsCard(category: Category, id: number, episode: Me
 
 	const urls = episode.screenshots.map((file) => screenshotUrl(category, id, file));
 
+	// Tiles start as dark placeholders: nothing is downloaded until the user asks
+	// for that screenshot, either from its tile or by paging through the lightbox.
+	const reveals: (() => void)[] = [];
+
 	const thumbs = urls.map((url, i) => {
-		const img = getSharedImage(url);
-		img.alt = `Screenshot ${i + 1}`;
-		const btn = el("button", {
+		const tile = el("button", {
 			className: "screens-thumb",
-			attrs: { type: "button", "aria-label": `Open screenshot ${i + 1} of ${urls.length}` },
-			children: [img],
+			attrs: { type: "button", "aria-label": `Show screenshot ${i + 1} of ${urls.length}` },
+			children: [el("span", { className: "screens-reveal", text: "👁" })],
 		});
-		btn.addEventListener("click", () => openLightbox(urls, i));
-		return btn;
+
+		let revealed = false;
+		const reveal = (): void => {
+			if (revealed) return;
+			revealed = true;
+			const img = loadSharedImage(url);
+			img.alt = `Screenshot ${i + 1}`;
+			tile.replaceChildren(img);
+			tile.classList.add("is-revealed");
+			tile.setAttribute("aria-label", `Open screenshot ${i + 1} of ${urls.length}`);
+		};
+		reveals.push(reveal);
+
+		tile.addEventListener("click", () => {
+			if (!revealed) reveal();
+			else openLightbox(urls, i, syncRevealed);
+		});
+		return tile;
 	});
+
+	// The lightbox may have loaded images the grid still shows as placeholders.
+	const syncRevealed = (): void => {
+		urls.forEach((url, i) => {
+			if (getSharedImage(url).src) reveals[i]?.();
+		});
+	};
 
 	return el("div", {
 		className: "info-card screens-card",
@@ -45,7 +76,7 @@ export function buildScreenshotsCard(category: Category, id: number, episode: Me
 }
 
 /** Fullscreen viewer. ← / → navigate, Space = next, Esc / backdrop = close. */
-export function openLightbox(urls: string[], startIndex: number): void {
+export function openLightbox(urls: string[], startIndex: number, onClose?: () => void): void {
 	if (urls.length === 0) return;
 	let index = Math.min(Math.max(startIndex, 0), urls.length - 1);
 
@@ -71,7 +102,8 @@ export function openLightbox(urls: string[], startIndex: number): void {
 
 	function show(i: number): void {
 		index = (i + urls.length) % urls.length;
-		// Only toggle visibility (no src changes, no new requests)
+		loadSharedImage(urls[index]!);
+		// Everything else only toggles visibility (no new requests)
 		imgs.forEach((im, k) => {
 			im.style.display = k === index ? "" : "none";
 		});
@@ -90,6 +122,7 @@ export function openLightbox(urls: string[], startIndex: number): void {
 			im.style.display = "";
 			origins[k]?.appendChild(im);
 		});
+		onClose?.();
 		opener?.focus?.();
 	}
 
