@@ -38,13 +38,32 @@ const LEVEL: Record<string, string> = { o: "Off", l: "Light", m: "Medium", h: "H
 const VIDEO: Record<string, string> = { av1: "AV1", off: "Off (copy)" };
 const AUDIO: Record<string, string> = { opus: "Opus", copy: "Copy (passthrough)" };
 const SUBS: Record<string, string> = { full: "Full", copy: "Copy" };
+const ENCODER: Record<string, string> = {
+	"svt-av1-essential": "SVT-AV1-Essential",
+	"svt-av1-hdr": "SVT-AV1-HDR",
+	"svt-av1-5fish": "SVT-AV1-5FISH",
+};
+const CROP: Record<string, string> = { o: "Off", a: "Auto" };
+const DENOISE_METRIC: Record<string, string> = { noise: "Noise", bitrate: "Bitrate" };
+const AUDIO_CODEC: Record<string, string> = { l: "Lossless first", s: "Smallest first" };
+const LANG_DETECT: Record<string, string> = { e: "Enabled", u: "Only if language undefined", d: "Disabled" };
+const SUB_SOURCE: Record<string, string> = { o: "Official first", f: "Fansub first" };
+const SUB_TIEBREAK: Record<string, string> = { a: "Alphabetical", s: "Source order" };
+const SUB_FORMAT: Record<string, string> = { t: "Text first", p: "Picture first" };
 
 const BITRATE_CHANNELS: { code: string; label: string }[] = [
 	{ code: "mo", label: "Mono" },
 	{ code: "so", label: "Stereo" },
 	{ code: "c21", label: "2.1" },
+	{ code: "c30", label: "3.0" },
+	{ code: "c31", label: "3.1" },
+	{ code: "c40", label: "4.0" },
+	{ code: "c41", label: "4.1" },
+	{ code: "c50", label: "5.0" },
 	{ code: "c51", label: "5.1" },
+	{ code: "c60", label: "6.0" },
 	{ code: "c61", label: "6.1" },
+	{ code: "c70", label: "7.0" },
 	{ code: "c71", label: "7.1" },
 	{ code: "c714", label: "7.1.4" },
 ];
@@ -122,6 +141,10 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 	let denoise: Record<string, string> | null = null;
 	let deband: Record<string, string> | null = null;
 	let bitrates: Record<string, string> | null = null;
+	let subDetect: Record<string, string> | null = null;
+	let subManip: Record<string, string> | null = null;
+	let subStyle: Record<string, string> | null = null;
+	let audioManip: Record<string, string> | null = null;
 	let audioLangs: string[] = [];
 	let subtitleLangs: string[] = [];
 	const filters: Record<string, string>[] = [];
@@ -147,6 +170,18 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 			case "ab":
 				bitrates = kv;
 				break;
+			case "sd":
+				subDetect = kv;
+				break;
+			case "sm":
+				subManip = kv;
+				break;
+			case "st":
+				subStyle = kv;
+				break;
+			case "am":
+				audioManip = kv;
+				break;
 			case "al":
 				audioLangs = splitList(kv.v);
 				break;
@@ -165,13 +200,20 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 		if (value !== null && value !== undefined && value !== "") items.push({ label, value, mono });
 	};
 
+	const pick = (map: Record<string, string>, code: string | undefined): string | null => (code ? (map[code] ?? code) : null);
+
 	// Core
 	if (core) {
-		push("Video", core.v ? (VIDEO[core.v] ?? core.v) : null);
-		push("Audio", core.a ? (AUDIO[core.a] ?? core.a) : null);
-		push("Subtitles", core.su ? (SUBS[core.su] ?? core.su) : null);
-		push("Quality", core.q ? (QUALITY[core.q] ?? core.q) : null);
-		push("Speed", core.sp ? (SPEED[core.sp] ?? core.sp) : null);
+		push("Encoder", pick(ENCODER, core.en));
+		push("CRF", core.cr);
+		push("Preset", core.pr);
+		push("Video", pick(VIDEO, core.v));
+		push("Audio", pick(AUDIO, core.a));
+		push("Subtitles", pick(SUBS, core.su));
+		push("Quality", pick(QUALITY, core.q));
+		push("Speed", pick(SPEED, core.sp));
+		push("Crop", pick(CROP, core.crp));
+		push("Crop limit", core.cl);
 		push("Downscale", bool(core.ds));
 		push("Skip boosting", bool(core.sb));
 		push("No phase inversion", bool(core.np));
@@ -185,12 +227,22 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 		const mode = LEVEL[denoise.m]!;
 		push("Denoise", mode);
 		if (denoise.m === "a") {
-			const thr = joinTuning([
-				["light", denoise.tl],
-				["medium", denoise.tm],
-				["heavy", denoise.th],
-			]);
-			if (thr) push("Denoise thresholds", thr);
+			push("Denoise metric", pick(DENOISE_METRIC, denoise.mt));
+			// Only the set matching the metric is used by the encoder; the other one
+			// may still be present in the code but has no effect on the encode.
+			const byBitrate = denoise.mt === "bitrate";
+			const thr = byBitrate
+				? joinTuning([
+						["light", denoise.tbl],
+						["medium", denoise.tbm],
+						["heavy", denoise.tbh],
+					])
+				: joinTuning([
+						["light", denoise.tl],
+						["medium", denoise.tm],
+						["heavy", denoise.th],
+					]);
+			if (thr) push(byBitrate ? "Denoise thresholds (× median bitrate)" : "Denoise thresholds", thr);
 			for (const [pfx, name] of [
 				["l", "light"],
 				["m", "medium"],
@@ -233,6 +285,63 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 	// Languages
 	if (audioLangs.length) push("Audio languages", audioLangs.join(", "));
 	if (subtitleLangs.length) push("Subtitle languages", subtitleLangs.join(", "));
+
+	// Audio track handling
+	if (audioManip) {
+		push("Remove audio description", bool(audioManip.rd));
+		push("Remove karaoke / off-vocal", bool(audioManip.rk));
+		push("Drop compatibility downmix tracks", bool(audioManip.dc));
+		push("Audio codec priority", pick(AUDIO_CODEC, audioManip.co));
+		push("Prefer uncensored tracks", bool(audioManip.pu));
+		push("Deduplicate audio tracks", bool(audioManip.de));
+		push("Rename audio tracks", bool(audioManip.rn));
+		push("Detect commentary", bool(audioManip.dco));
+		push("Detect audio description", bool(audioManip.dde));
+		push("Detect karaoke", bool(audioManip.dka));
+		push("Audio language priority", splitList(audioManip.lp).join(", "));
+	}
+
+	// Subtitle detection
+	if (subDetect) {
+		push("Language detector", pick(LANG_DETECT, subDetect.ld));
+		push("Language detector confidence", subDetect.lc);
+		push("Detect Signs & Songs", bool(subDetect.ss));
+		push("Detect SDH", bool(subDetect.sh));
+		push("Detect honorifics", bool(subDetect.ho));
+		push("Signs & Songs style ratio", subDetect.ssr);
+		push("Signs & Songs line ratio", subDetect.slr);
+		push("SDH marker ratio", subDetect.sdr);
+		push("SDH min lines", subDetect.sdl);
+		push("Honorifics min count", subDetect.hmc);
+		push("Honorifics ratio (×)", subDetect.hr);
+		push("Assume mislabeled JP tracks are English", bool(subDetect.am));
+	}
+
+	// Subtitle track handling
+	if (subManip) {
+		push("Subtitle source priority", pick(SUB_SOURCE, subManip.sp));
+		push("Fansub tiebreak", pick(SUB_TIEBREAK, subManip.tb));
+		push("Subtitle format priority", pick(SUB_FORMAT, subManip.fp));
+		push("Drop picture-based subtitles", bool(subManip.dp));
+		push("Dedupe across formats", bool(subManip.df));
+		push("Rename subtitle tracks", bool(subManip.rn));
+		push("Compress subtitles", bool(subManip.cz));
+		push("Min. savings to compress", subManip.zm ? `${subManip.zm}%` : null);
+		push("Remove SDH", bool(subManip.rs));
+		push("Remove commentary subtitles", bool(subManip.rc));
+		push("Remove forced / Signs & Songs", bool(subManip.rf));
+		push("Remove storyboards", bool(subManip.rb));
+		push("Remove honorifics", bool(subManip.rh));
+		push("Subtitle language priority", splitList(subManip.lp).join(", "));
+	}
+
+	// Subtitle styling & fonts
+	if (subStyle) {
+		push("Convert SRT to ASS", bool(subStyle.cv));
+		push("Replace dialogue font in ASS", bool(subStyle.ra));
+		push("Remove unused fonts", bool(subStyle.ru));
+		push("Restyle targets", splitList(subStyle.tg).join(", "));
+	}
 
 	if (core) {
 		push("Custom parameters", core.cp ? unesc(core.cp) : null, true);
