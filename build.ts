@@ -36,14 +36,11 @@ async function build() {
 	const hashedName = output.path.split("/").pop()!;
 	const htmlPath = `${OUT}/index.html`;
 	const html = await Bun.file(htmlPath).text();
-	const patched = html.replace(
-		/<script[^>]*src="\.?\/?main\.js"[^>]*><\/script>/,
-		`<script type="module" src="/${hashedName}"></script>`,
-	);
+	const patched = html.replace(/<script[^>]*src="\.?\/?main\.js"[^>]*><\/script>/, `<script type="module" src="/${hashedName}"></script>`);
 	await Bun.write(htmlPath, patched);
 
 	const ms = (performance.now() - start).toFixed(0);
-	console.log(`✓ Built in ${ms}ms → ${hashedName}`);
+	console.log(`Built in ${ms}ms -> ${hashedName}`);
 }
 
 const isWatch = process.argv.includes("--watch");
@@ -54,7 +51,7 @@ await build().catch((err) => {
 });
 
 if (isWatch) {
-	console.log("👀 Watching src/ and public/ …");
+	console.log("Watching src/ and public/ ...");
 	const rebuilder = debounce(async () => {
 		try {
 			await build();
