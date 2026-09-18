@@ -22,6 +22,8 @@ The API URL is read at runtime from `/config.json` so you can change backends wi
 
 Edit `public/config.json` during development, or replace `dist/config.json` on your static host in production.
 
+Release versions such as `S01 v2` appear in detail headings and season labels. Movie cards also show versions above `v1`. An omitted version and explicit `v1` share the default display. Torrent download URLs include the upload timestamp so replacing a release changes its download URL while retaining the same detail page.
+
 ## Deployment to Cloudflare Pages
 
 1. Build: `bun run build`

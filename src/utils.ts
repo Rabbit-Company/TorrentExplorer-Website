@@ -96,6 +96,17 @@ export function categoryLabel(category: string): string {
 	return capitalize(category);
 }
 
+export function releaseVersion(torrentName: string): number {
+	const name = torrentName.replace(/\.torrent$/i, "").trim();
+	const match = name.match(/(?:\s+|(?<=\bS\d{2,3}))v([1-9]\d*)(?=\s*(?:\[[^\]]+\]\s*)*$)/i);
+	return match ? Number(match[1]) : 1;
+}
+
+export function releaseLabel(season: string | null, torrentName: string): string {
+	const version = releaseVersion(torrentName);
+	return `${season ?? "Release"}${version > 1 ? ` v${version}` : ""}`;
+}
+
 export function navigateTo(path: string): void {
 	if (window.location.pathname === path) return;
 	window.history.pushState(null, "", path);

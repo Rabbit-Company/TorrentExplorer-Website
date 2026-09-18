@@ -1,5 +1,5 @@
 import { listReleases, type Category, type ReleaseGroup } from "../api.ts";
-import { el, formatDate, debounce, toast, categoryLabel, navigateTo } from "../utils.ts";
+import { el, formatDate, debounce, toast, categoryLabel, navigateTo, releaseVersion, releaseLabel } from "../utils.ts";
 
 const PAGE_SIZE = 24;
 
@@ -99,6 +99,10 @@ function groupCard(group: ReleaseGroup): HTMLElement {
 	metaChildren.push(formatDate(group.latest_uploaded_at));
 
 	const hasSeasons = group.releases.some((r) => r.season);
+	if (!hasSeasons) {
+		const version = releaseVersion(defaultRelease.torrent_name);
+		if (version > 1) titleLine.push(`v${version}`);
+	}
 	const seasonList = hasSeasons
 		? el("div", {
 				className: "season-list",
@@ -110,7 +114,7 @@ function groupCard(group: ReleaseGroup): HTMLElement {
 							"data-link": "true",
 							title: r.torrent_name,
 						},
-						text: r.season ?? "Release",
+						text: releaseLabel(r.season, r.torrent_name),
 					}),
 				),
 			})

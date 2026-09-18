@@ -10,7 +10,7 @@ import {
 } from "../api.ts";
 import { parseMediaInfo, formatValue, type MediaInfoSection, getField } from "../mediainfo.ts";
 import { decodeRabbitSettings, looksLikeSettingsCode } from "../rabbit-settings.ts";
-import { el, formatDate, toast, categoryLabel, formatBytes } from "../utils.ts";
+import { el, formatDate, toast, categoryLabel, formatBytes, releaseVersion } from "../utils.ts";
 import { mountComments } from "./comments.ts";
 import { buildSettingsCard } from "./encoder-settings.ts";
 import { buildScreenshotsCard } from "./media.ts";
@@ -131,6 +131,8 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 		const titleParts = [release.title];
 		if (release.year) titleParts.push(`(${release.year})`);
 		if (release.season) titleParts.push(`- ${release.season}`);
+		const version = releaseVersion(release.torrent_name);
+		if (version > 1) titleParts.push(`v${version}`);
 
 		const backLink = el("a", {
 			className: "back-link",
@@ -147,7 +149,7 @@ export async function renderDetail(app: HTMLElement, category: Category, id: num
 		const downloadBtn = el("a", {
 			className: "download-btn",
 			attrs: {
-				href: torrentUrl(release.category, release.id),
+				href: torrentUrl(release.category, release.id, release.uploaded_at),
 				download: `${release.torrent_name}.torrent`,
 			},
 			children: ["⬇ Download .torrent"],

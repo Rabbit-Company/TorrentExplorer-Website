@@ -331,8 +331,8 @@ export function screenshotUrl(category: Category, id: number, file: string): str
 	return `${apiUrl}/api/media/${category}/${id}/screenshot?file=${encodeURIComponent(file)}`;
 }
 
-export function torrentUrl(category: Category, id: number): string {
-	return `${apiUrl}/api/torrent/${category}/${id}`;
+export function torrentUrl(category: Category, id: number, uploadedAt?: number): string {
+	return `${apiUrl}/api/torrent/${category}/${id}${uploadedAt === undefined ? "" : `?v=${uploadedAt}`}`;
 }
 
 export function absoluteApiBase(): string {
