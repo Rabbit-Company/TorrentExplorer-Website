@@ -103,6 +103,10 @@ interface Settings {
 	autoDenoiseThresholds: Levels<number>;
 	autoDenoiseBitrateThresholds: Levels<number>;
 	nlmeansParams: Levels<NlmeansParams>;
+	denoiseEngine: string;
+	avdPreset: string;
+	avdNlmeansStrength: Levels<number>;
+	avdScales: Record<string, number>;
 	deband: string;
 	gradfunParams: Levels<GradfunParams>;
 	audioBitrates: Record<string, number>;
@@ -183,6 +187,10 @@ const BASELINE: Settings = {
 		medium: { s: 1.5, p: 3, r: 9 },
 		heavy: { s: 2.0, p: 3, r: 11 },
 	},
+	denoiseEngine: "nlmeans",
+	avdPreset: "base",
+	avdNlmeansStrength: { light: 1.0, medium: 1.5, heavy: 2.0 },
+	avdScales: { "avd-nlmeans-hq": 1.0, "avd-nl4d": 1.0 },
 	deband: "off",
 	gradfunParams: {
 		light: { strength: 0.8, radius: 8 },
@@ -281,6 +289,16 @@ const ENCODER: Record<string, string> = {
 };
 const CROP: Record<string, string> = { off: "Off", auto: "Auto" };
 const DENOISE_METRIC: Record<string, string> = { noise: "Noise", bitrate: "Bitrate" };
+const CODE_AVD_ENGINE: Record<string, string> = { an: "avd-nlmeans", ah: "avd-nlmeans-hq", a4: "avd-nl4d" };
+const DENOISE_ENGINE: Record<string, string> = {
+	nlmeans: "FFmpeg NLMeans",
+	"avd-nlmeans": "AVD NLMeans",
+	"avd-nlmeans-hq": "AVD NLMeans-HQ",
+	"avd-nl4d": "AVD NL4D",
+};
+const AVD_PRESET: Record<string, string> = { veryfast: "Very fast", fast: "Fast", base: "Base", slow: "Slow", veryslow: "Very slow" };
+/** av-denoise engines that measure the noise themselves and take one strength scale. */
+const AVD_SELF_TUNING: ReadonlySet<string> = new Set(["avd-nlmeans-hq", "avd-nl4d"]);
 const AUDIO_CODEC: Record<string, string> = { "lossless-first": "Lossless first", "smallest-first": "Smallest first" };
 const LANG_DETECT: Record<string, string> = { enabled: "Enabled", "und-only": "Only if language undefined", disabled: "Disabled" };
 const SUB_SOURCE: Record<string, string> = { "official-first": "Official first", "fansub-first": "Fansub first" };
@@ -402,6 +420,30 @@ const applyCore: Applier = (out, kv) => {
 
 const applyDenoise: Applier = (out, kv) => {
 	out.denoise = enumOr(CODE_LEVEL, kv.m, "off");
+	if (out.denoise === "off") return;
+
+	// av-denoise engine: FFmpeg nlmeans is the baseline and is left out of the code. The engine's
+	// own strength replaces the nlmeans triplets: one scale ("x") for the self-tuning engines,
+	// per-level strengths ("xl"/"xm"/"xh", or "x" for a fixed level) for plain NLMeans.
+	const avd = kv.e ? CODE_AVD_ENGINE[kv.e] : undefined;
+	if (avd) {
+		out.denoiseEngine = avd;
+		if (kv.ap && AVD_PRESET[kv.ap]) out.avdPreset = kv.ap;
+		if (AVD_SELF_TUNING.has(avd)) {
+			out.avdScales[avd] = numOr(kv.x, out.avdScales[avd]!);
+		} else if (out.denoise === "auto") {
+			for (const [lvl, key] of [
+				["light", "xl"],
+				["medium", "xm"],
+				["heavy", "xh"],
+			] as const) {
+				out.avdNlmeansStrength[lvl] = numOr(kv[key], out.avdNlmeansStrength[lvl]);
+			}
+		} else if (isLevel(out.denoise)) {
+			out.avdNlmeansStrength[out.denoise] = numOr(kv.x, out.avdNlmeansStrength[out.denoise]);
+		}
+	}
+
 	if (out.denoise === "auto") {
 		if (kv.mt) out.autoDenoiseMetric = kv.mt;
 		for (const [lvl, t, tb, pfx] of [
@@ -411,9 +453,9 @@ const applyDenoise: Applier = (out, kv) => {
 		] as const) {
 			out.autoDenoiseThresholds[lvl] = numOr(kv[t], out.autoDenoiseThresholds[lvl]);
 			out.autoDenoiseBitrateThresholds[lvl] = numOr(kv[tb], out.autoDenoiseBitrateThresholds[lvl]);
-			out.nlmeansParams[lvl] = readNlmeans(kv, pfx, out.nlmeansParams[lvl]);
+			if (!avd) out.nlmeansParams[lvl] = readNlmeans(kv, pfx, out.nlmeansParams[lvl]);
 		}
-	} else if (isLevel(out.denoise)) {
+	} else if (!avd && isLevel(out.denoise)) {
 		// Fixed level: only that level's triplet is stored, without a prefix.
 		out.nlmeansParams[out.denoise] = readNlmeans(kv, "", out.nlmeansParams[out.denoise]);
 	}
@@ -621,8 +663,23 @@ function buildGroups(s: Settings): SettingGroup[] {
 
 	const denoiseAuto = s.denoise === "auto";
 	const notDenoiseAuto = denoiseAuto ? undefined : "Only used when Denoise is set to Auto.";
+	const denoiseOff = s.denoise === "off" ? "Denoise is off." : undefined;
+	const engineName = pick(DENOISE_ENGINE, s.denoiseEngine);
+	const levelInactive = (l: Level): string | undefined =>
+		denoiseAuto || s.denoise === l ? undefined : (denoiseOff ?? `Denoise used the ${pick(LEVEL, s.denoise)} level.`);
 	const nlmeansInactive = (l: Level): string | undefined =>
-		denoiseAuto || s.denoise === l ? undefined : s.denoise === "off" ? "Denoise is off." : `Denoise used the ${pick(LEVEL, s.denoise)} level.`;
+		denoiseOff ?? (s.denoiseEngine !== "nlmeans" ? `The ${engineName} denoiser was used instead of FFmpeg NLMeans.` : levelInactive(l));
+	const selfTuning = AVD_SELF_TUNING.has(s.denoiseEngine);
+	const avdPresetInactive =
+		denoiseOff ??
+		(s.denoiseEngine === "nlmeans"
+			? "Only used by the av-denoise denoisers. FFmpeg NLMeans was used."
+			: s.denoiseEngine === "avd-nl4d"
+				? "AVD NL4D does not use a preset."
+				: undefined);
+	const avdScaleInactive = denoiseOff ?? (selfTuning ? undefined : `Only used by AVD NLMeans-HQ and AVD NL4D. ${engineName} was used.`);
+	const avdStrengthInactive = (l: Level): string | undefined =>
+		denoiseOff ?? (s.denoiseEngine !== "avd-nlmeans" ? `Only used by AVD NLMeans. ${engineName} was used.` : levelInactive(l));
 	const gradfunInactive = (l: Level): string | undefined =>
 		s.deband === l ? undefined : s.deband === "off" ? "Deband is off." : `Deband used the ${pick(LEVEL, s.deband)} level.`;
 
@@ -729,7 +786,37 @@ function buildGroups(s: Settings): SettingGroup[] {
 			"Denoise",
 			pick(LEVEL, s.denoise),
 			pick(LEVEL, b.denoise),
-			"Removes grain and noise with NLMeans before encoding. Noise is very expensive to encode, so denoising can shrink the file a lot, but too much of it smooths away fine detail and intentional film grain. Light, Medium and Heavy apply one strength to the whole file, while Auto analyses every scene and picks a level (or none) per scene.",
+			"Removes grain and noise before encoding. Noise is very expensive to encode, so denoising can shrink the file a lot, but too much of it smooths away fine detail and intentional film grain. Light, Medium and Heavy apply one strength to the whole file, while Auto analyses every scene and picks a level (or none) per scene.",
+		),
+		row(
+			"Denoiser",
+			engineName,
+			pick(DENOISE_ENGINE, b.denoiseEngine),
+			"Which denoiser ran. FFmpeg NLMeans is the classic filter and runs on CPU or GPU. The AVD engines come from av-denoise and need a GPU. AVD NLMeans is a fast NLMeans with a fixed strength per level. AVD NLMeans-HQ and AVD NL4D measure the noise in every scene and set their own strength, and NL4D also uses neighbouring frames, which keeps more detail on noisy sources.",
+			{ inactive: denoiseOff },
+		),
+		row(
+			"AVD preset",
+			pick(AVD_PRESET, s.avdPreset),
+			pick(AVD_PRESET, b.avdPreset),
+			"Speed and quality ladder of the av-denoise NLMeans engines, mainly how many neighbouring frames are searched. Slower presets denoise more cleanly but take longer.",
+			{ inactive: avdPresetInactive },
+		),
+		row(
+			"AVD strength scale",
+			`${selfTuning ? s.avdScales[s.denoiseEngine] : 1}x`,
+			"1x",
+			"Multiplier on the noise level that AVD NLMeans-HQ and AVD NL4D measure on their own. 1x trusts the measurement, lower values denoise more gently and higher values denoise harder. One value covers every denoise level, because the engine already adapts to each scene.",
+			{ inactive: avdScaleInactive },
+		),
+		...LEVELS.map((l) =>
+			row(
+				`AVD NLMeans strength (${LEVEL[l]})`,
+				num(s.avdNlmeansStrength[l]),
+				num(b.avdNlmeansStrength[l]),
+				`How much noise AVD NLMeans removes at the ${l} level, on the same scale as the FFmpeg NLMeans strength.`,
+				{ inactive: avdStrengthInactive(l) },
+			),
 		),
 		row(
 			"Auto-denoise metric",
@@ -754,10 +841,10 @@ function buildGroups(s: Settings): SettingGroup[] {
 		),
 		...LEVELS.map((l) =>
 			row(
-				`NLMeans (${LEVEL[l]})`,
+				`FFmpeg NLMeans (${LEVEL[l]})`,
 				nlmeans(s.nlmeansParams[l]),
 				nlmeans(b.nlmeansParams[l]),
-				`Denoise filter parameters for the ${l} level. Strength (1-30) is how much noise is removed. Patch (odd) is the size of the blocks being compared, and research (odd) is how far around each pixel similar blocks are searched. Larger values denoise harder but take longer.`,
+				`FFmpeg NLMeans parameters for the ${l} level. Strength (1-30) is how much noise is removed. Patch (odd) is the size of the blocks being compared, and research (odd) is how far around each pixel similar blocks are searched. Larger values denoise harder but take longer.`,
 				{ inactive: nlmeansInactive(l) },
 			),
 		),
