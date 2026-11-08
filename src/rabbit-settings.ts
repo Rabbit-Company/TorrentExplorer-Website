@@ -28,6 +28,8 @@ export interface SettingRow {
 	inactive?: string;
 	/** Headline setting: always listed in the summary card, even at its default. */
 	pinned?: boolean;
+	/** A key or section this site does not know, shown as stored in the code. */
+	unknown?: boolean;
 }
 
 export interface SettingGroup {
@@ -46,6 +48,8 @@ export interface DecodedSettings {
 	groups: SettingGroup[];
 	/** Summary: settings that changed and took effect, plus the pinned headline ones. */
 	items: SettingRow[];
+	/** How many keys, sections or values in the code this site does not recognise. */
+	unknownCount: number;
 }
 
 /** Highest format version this decoder was written against. */
@@ -83,8 +87,11 @@ interface VsFilter {
  * Enum-like fields hold the long-form value (e.g. "medium") or, for codes this
  * build does not recognise, the raw code so it can still be displayed.
  */
+type SyntheticGrainMode = "off" | "strength" | "iso";
+
 interface Settings {
 	encoder: string;
+	manualQuality: boolean;
 	manualCrf: number;
 	manualPreset: number;
 	customEncoderParams: string;
@@ -96,8 +103,21 @@ interface Settings {
 	crop: string;
 	cropLimit: number;
 	downscale: boolean;
+	hdr10Plus: boolean;
 	skipBoosting: boolean;
+	booster: string;
+	boostDarkAware: boolean;
+	maxBitrateMbps: number;
 	noPhaseInv: boolean;
+	filmGrainTable: boolean;
+	filmGrainRestore: boolean;
+	filmGrainJustEnough: boolean;
+	filmGrainStatic: boolean;
+	filmGrainSyntheticMode: SyntheticGrainMode;
+	filmGrainSyntheticStrength: number;
+	filmGrainSyntheticIso: number;
+	filmGrainSyntheticSize: string;
+	filmGrainSyntheticChroma: number;
 	denoise: string;
 	autoDenoiseMetric: string;
 	autoDenoiseThresholds: Levels<number>;
@@ -165,6 +185,7 @@ interface Settings {
  */
 const BASELINE: Settings = {
 	encoder: "svt-av1-essential",
+	manualQuality: false,
 	manualCrf: 24,
 	manualPreset: 4,
 	customEncoderParams: "",
@@ -176,8 +197,22 @@ const BASELINE: Settings = {
 	crop: "off",
 	cropLimit: 0.1,
 	downscale: false,
+	hdr10Plus: true,
 	skipBoosting: false,
+	booster: "auto-boost-essential",
+	boostDarkAware: true,
+	maxBitrateMbps: 0,
 	noPhaseInv: false,
+	filmGrainTable: false,
+	// Codes from before film grain existed mean no grain of Rabbit's own.
+	filmGrainRestore: false,
+	filmGrainJustEnough: false,
+	filmGrainStatic: false,
+	filmGrainSyntheticMode: "off",
+	filmGrainSyntheticStrength: 0,
+	filmGrainSyntheticIso: 0,
+	filmGrainSyntheticSize: "medium",
+	filmGrainSyntheticChroma: 0,
 	denoise: "off",
 	autoDenoiseMetric: "noise",
 	autoDenoiseThresholds: { light: 0.5, medium: 0.7, heavy: 0.9 },
@@ -264,7 +299,8 @@ const BASELINE: Settings = {
 
 // Code -> long-form value maps (the inverse of Rabbit Encoder's *_TO_CODE maps)
 
-const CODE_QUALITY: Record<string, string> = { l: "low", m: "medium", h: "high" };
+const CODE_QUALITY: Record<string, string> = { lr: "lower", l: "low", m: "medium", h: "high", hr: "higher" };
+const CODE_BOOSTER: Record<string, string> = { abe: "auto-boost-essential", r: "rabbit-boost" };
 const CODE_SPEED: Record<string, string> = { sr: "slower", s: "slow", m: "medium", f: "fast", fr: "faster" };
 const CODE_LEVEL: Record<string, string> = { o: "off", l: "light", m: "medium", h: "heavy", a: "auto" };
 const CODE_CROP: Record<string, string> = { o: "off", a: "auto" };
@@ -276,7 +312,8 @@ const CODE_SUB_FORMAT: Record<string, string> = { t: "text-first", p: "picture-f
 
 // Long-form value -> display label
 
-const QUALITY: Record<string, string> = { low: "Low", medium: "Medium", high: "High" };
+const QUALITY: Record<string, string> = { lower: "Lower", low: "Low", medium: "Medium", high: "High", higher: "Higher" };
+const GRAIN_SIZE: Record<string, string> = { fine: "Fine", medium: "Medium", coarse: "Coarse" };
 const SPEED: Record<string, string> = { slower: "Slower", slow: "Slow", medium: "Medium", fast: "Fast", faster: "Faster" };
 const LEVEL: Record<string, string> = { off: "Off", light: "Light", medium: "Medium", heavy: "Heavy", auto: "Auto" };
 const VIDEO: Record<string, string> = { av1: "AV1", off: "Off (lossless FFV1)" };
@@ -286,6 +323,7 @@ const ENCODER: Record<string, string> = {
 	"svt-av1-essential": "SVT-AV1-Essential",
 	"svt-av1-hdr": "SVT-AV1-HDR",
 	"svt-av1-5fish": "SVT-AV1-5FISH",
+	"svt-av1-tritium": "SVT-AV1-Tritium",
 };
 const CROP: Record<string, string> = { off: "Off", auto: "Auto" };
 const DENOISE_METRIC: Record<string, string> = { noise: "Noise", bitrate: "Bitrate" };
@@ -314,6 +352,8 @@ const TRACK_TYPE: Record<string, string> = {
 
 /** Encoders driven by Auto-Boost-Essential (Quality/Speed) rather than a fixed CRF/preset. */
 const AUTO_BOOST_ENCODERS = new Set(["svt-av1-essential"]);
+/** Encoders that apply a CRF per scene from zones, so Rabbit Boost can drive them. */
+const RABBIT_BOOST_ENCODERS = new Set(["svt-av1-essential", "svt-av1-tritium"]);
 
 const LEVELS: Level[] = ["light", "medium", "heavy"];
 
@@ -398,6 +438,7 @@ function boolOr(v: string | undefined, fallback: boolean): boolean {
 
 const applyCore: Applier = (out, kv) => {
 	if (kv.en) out.encoder = unesc(kv.en);
+	out.manualQuality = boolOr(kv.mq, out.manualQuality);
 	out.manualCrf = numOr(kv.cr, out.manualCrf);
 	out.manualPreset = numOr(kv.pr, out.manualPreset);
 	// The RE1 encoder escapes custom params twice, so unescape twice as well
@@ -412,10 +453,49 @@ const applyCore: Applier = (out, kv) => {
 	out.cropLimit = numOr(kv.cl, out.cropLimit);
 	out.downscale = boolOr(kv.ds, out.downscale);
 	out.skipBoosting = boolOr(kv.sb, out.skipBoosting);
+	out.booster = enumOr(CODE_BOOSTER, kv.bo, out.booster);
+	out.boostDarkAware = boolOr(kv.da, out.boostDarkAware);
+	out.maxBitrateMbps = Math.max(0, numOr(kv.mb, out.maxBitrateMbps));
 	out.noPhaseInv = boolOr(kv.np, out.noPhaseInv);
 	out.dedupeSubtitles = boolOr(kv.dd, out.dedupeSubtitles);
 	out.keepBestAudioChannelsOnly = boolOr(kv.kc, out.keepBestAudioChannelsOnly);
 	out.removeCommentaryAudio = boolOr(kv.rc, out.removeCommentaryAudio);
+	out.filmGrainTable = boolOr(kv.fg, out.filmGrainTable);
+	out.hdr10Plus = boolOr(kv.hp, out.hdr10Plus);
+};
+
+const applyFilmGrain: Applier = (out, kv) => {
+	out.filmGrainRestore = boolOr(kv.r, out.filmGrainRestore);
+	out.filmGrainJustEnough = boolOr(kv.je, out.filmGrainJustEnough);
+	out.filmGrainStatic = boolOr(kv.sg, out.filmGrainStatic);
+	// Only the synthetic mode in use is stored: iso= for ISO grain, s= for a deviation.
+	if (kv.s !== undefined) {
+		out.filmGrainSyntheticMode = "strength";
+		out.filmGrainSyntheticStrength = numOr(kv.s, 0);
+	}
+	if (kv.iso !== undefined) {
+		out.filmGrainSyntheticMode = "iso";
+		out.filmGrainSyntheticIso = numOr(kv.iso, 0);
+	}
+	if (kv.z) out.filmGrainSyntheticSize = kv.z;
+	out.filmGrainSyntheticChroma = numOr(kv.ch, out.filmGrainSyntheticChroma);
+};
+
+/** Keys each section is known to carry. Anything else is listed as not recognised. */
+const KNOWN_KEYS: Record<string, ReadonlySet<string> | null> = {
+	c: new Set("en mq cr pr cp q sp v a su crp cl ds sb bo da mb np dd kc rc fg hp".split(" ")),
+	dn: new Set("m e ap x xl xm xh mt tl tm th tbl tbm tbh s p r ls lp lr ms mp mr hs hp hr".split(" ")),
+	db: new Set(["m", "st", "rd"]),
+	fg: new Set(["r", "je", "sg", "s", "iso", "z", "ch"]),
+	ab: new Set(BITRATE_CHANNELS.map((c) => c.code)),
+	al: new Set(["v"]),
+	sl: new Set(["v"]),
+	sd: new Set("ld lc ss sh ho ssr slr sdr sdl hmc hr am".split(" ")),
+	sm: new Set("sp tb fp dp df rn cz zm rs rc rf rb rh lp".split(" ")),
+	st: new Set(["cv", "ra", "ru", "tg"]),
+	am: new Set("rd rk dc co pu de rn dco dde dka lp".split(" ")),
+	// VapourSynth filter parameters are free-form.
+	vs: null,
 };
 
 const applyDenoise: Applier = (out, kv) => {
@@ -549,17 +629,44 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 
 	const version = parseInt(m[1]!, 10);
 	const s: Settings = structuredClone(BASELINE);
+	const unknownRows: SettingRow[] = [];
+	const unknownRow = (label: string, value: string): SettingRow => ({
+		label,
+		value,
+		defaultValue: "Not set",
+		changed: true,
+		description:
+			"Written by a newer Rabbit Encoder than this site knows about, so it is shown exactly as stored in the settings code. Rabbit Encoder itself still reads it when the code is imported.",
+		mono: true,
+		unknown: true,
+	});
 
 	for (let i = 1; i < tokens.length; i++) {
 		const sectionRaw = tokens[i]!;
+		if (!sectionRaw) continue;
 		const t = sectionRaw.indexOf("~");
-		if (t < 0) continue;
+		if (t < 0) {
+			unknownRows.push(unknownRow("Unreadable section", sectionRaw));
+			continue;
+		}
 		const tag = sectionRaw.slice(0, t);
 		const kv = parsePayload(sectionRaw.slice(t + 1));
+
+		if (!(tag in KNOWN_KEYS)) {
+			unknownRows.push(unknownRow(`Section ${tag}`, sectionRaw.slice(t + 1) || "(empty)"));
+			continue;
+		}
+		const known = KNOWN_KEYS[tag];
+		if (known) {
+			for (const [k, v] of Object.entries(kv)) if (!known.has(k)) unknownRows.push(unknownRow(`${tag} · ${k}`, unesc(v)));
+		}
 
 		switch (tag) {
 			case "c":
 				applyCore(s, kv);
+				break;
+			case "fg":
+				applyFilmGrain(s, kv);
 				break;
 			case "dn":
 				applyDenoise(s, kv);
@@ -598,20 +705,18 @@ export function decodeRabbitSettings(code: string): DecodedSettings | null {
 				s.vsFilters.push({ id, level, params });
 				break;
 			}
-			default:
-				break; // unknown section: ignore for forward-compatibility
 		}
 	}
 
-	const groups = buildGroups(s);
-	const items = groups.flatMap((g) => g.rows).filter((r) => (r.changed || r.pinned) && !r.inactive);
+	const { groups, unknownValues } = buildGroups(s);
+	if (unknownRows.length) groups.push({ title: "Not recognised", rows: unknownRows });
+	const items = groups.flatMap((g) => g.rows).filter((r) => (r.changed || r.pinned) && !r.inactive && !r.unknown);
 
-	return { version, newerFormat: version > KNOWN_FORMAT, code: raw, groups, items };
+	return { version, newerFormat: version > KNOWN_FORMAT, code: raw, groups, items, unknownCount: unknownRows.length + unknownValues };
 }
 
 // Display formatting
 
-const pick = (map: Record<string, string>, v: string): string => map[v] ?? v;
 const yesNo = (b: boolean): string => (b ? "Yes" : "No");
 const num = (n: number): string => String(n);
 
@@ -642,8 +747,16 @@ const thresholds = (t: Levels<number>, suffix = ""): string => LEVELS.map((l) =>
 
 // Grouped rows (with descriptions)
 
-function buildGroups(s: Settings): SettingGroup[] {
+function buildGroups(s: Settings): { groups: SettingGroup[]; unknownValues: number } {
 	const b = BASELINE;
+	// A value this site has no label for came from a newer Rabbit Encoder. Show its raw code and count it.
+	const unknownSeen = new Set<string>();
+	const pick = (map: Record<string, string>, v: string): string => {
+		const label = map[v];
+		if (label !== undefined) return label;
+		unknownSeen.add(`${Object.keys(map).join()}:${v}`);
+		return `${v} (not recognised)`;
+	};
 	const row = (label: string, value: string, defaultValue: string, description: string, extra: Partial<SettingRow> = {}): SettingRow => ({
 		label,
 		value,
@@ -658,8 +771,37 @@ function buildGroups(s: Settings): SettingGroup[] {
 	const audioCopied = s.audioEncode === "copy" ? "Audio was copied from the source, not re-encoded to Opus." : undefined;
 	const subsCopied = s.subtitleProcessing === "copy" ? "Subtitles were copied from the source untouched (Subtitle processing is Copy)." : undefined;
 	const autoBoost = AUTO_BOOST_ENCODERS.has(s.encoder);
-	const notAutoBoost = videoOff ?? (autoBoost ? undefined : `Only used by SVT-AV1-Essential. ${encoderName} encodes with a fixed CRF and preset instead.`);
-	const notManual = videoOff ?? (autoBoost ? "SVT-AV1-Essential derives its CRF from Quality and its preset from Speed instead." : undefined);
+	const manual = !autoBoost || s.manualQuality;
+	const rabbit = RABBIT_BOOST_ENCODERS.has(s.encoder) && s.booster === "rabbit-boost";
+	const boosting = autoBoost || rabbit;
+	const notPresets =
+		videoOff ??
+		(!autoBoost
+			? `Only used by SVT-AV1-Essential. ${encoderName} encodes with a CRF and preset instead.`
+			: manual
+				? "Rate control was set to CRF and preset."
+				: undefined);
+	const notManual = videoOff ?? (manual ? undefined : "SVT-AV1-Essential derived its CRF from Quality and its preset from Speed instead.");
+	const noBooster =
+		videoOff ?? (autoBoost || RABBIT_BOOST_ENCODERS.has(s.encoder) ? undefined : `${encoderName} has no booster and encodes the whole file at one CRF.`);
+	const notBoosting = videoOff ?? noBooster ?? (boosting ? undefined : "No booster was used.");
+	const boosterLabel = (bo: string, enc: string): string =>
+		bo === "rabbit-boost"
+			? "Rabbit Boost"
+			: bo === "auto-boost-essential"
+				? AUTO_BOOST_ENCODERS.has(enc)
+					? "Auto-Boost-Essential"
+					: "Off"
+				: pick(CODE_BOOSTER, bo);
+	const grainOff = s.videoEncode === "off" ? "Video was not encoded, so no grain was written." : undefined;
+	const syntheticGrain = (g: Settings): string =>
+		g.filmGrainSyntheticMode === "iso"
+			? g.filmGrainSyntheticIso > 0
+				? `ISO ${g.filmGrainSyntheticIso}`
+				: "Off"
+			: g.filmGrainSyntheticMode === "strength" && g.filmGrainSyntheticStrength > 0
+				? `Deviation ${g.filmGrainSyntheticStrength}`
+				: "Off";
 
 	const denoiseAuto = s.denoise === "auto";
 	const notDenoiseAuto = denoiseAuto ? undefined : "Only used when Denoise is set to Auto.";
@@ -714,43 +856,78 @@ function buildGroups(s: Settings): SettingGroup[] {
 				"Encoder",
 				encoderName,
 				pick(ENCODER, b.encoder),
-				"Which SVT-AV1 build encoded the video. SVT-AV1-Essential runs through Auto-Boost-Essential, which tunes the CRF per scene automatically from the Quality setting, which makes it the easiest choice. SVT-AV1-HDR (recommended for live action) and SVT-AV1-5FISH (recommended for anime and animation) encode the whole file with one fixed CRF and preset.",
+				"Which SVT-AV1 build encoded the video. SVT-AV1-Essential runs through Auto-Boost-Essential, which tunes the CRF per scene automatically from the Quality setting, which makes it the easiest choice. SVT-AV1-HDR (recommended for live action) and SVT-AV1-5FISH (recommended for anime and animation) encode the whole file with one fixed CRF and preset. SVT-AV1-Tritium is SVT-AV1-HDR with the scene detection and auto tiling of Essential, and Rabbit Boost can tune its CRF per scene.",
 				{ inactive: videoOff },
+			),
+			row(
+				"Rate control",
+				manual ? "CRF and preset" : "Quality and speed",
+				"Quality and speed",
+				"How SVT-AV1-Essential was told what to aim for. Quality and speed picks the CRF and preset from the named Quality and Speed levels. CRF and preset sets both numbers directly.",
+				{ inactive: videoOff ?? (autoBoost ? undefined : `${encoderName} always takes a CRF and preset.`) },
 			),
 			row(
 				"Quality",
 				pick(QUALITY, s.quality),
 				pick(QUALITY, b.quality),
-				"Target visual quality. It sets the base CRF: Low = 35, Medium = 30, High = 25 (each +5 for sources larger than 1080p). Auto-Boost-Essential then lowers the CRF (spending more bits) on scenes that a fast test encode showed to be weaker than average, so quality stays consistent across the whole file. Higher quality means a bigger file.",
-				{ inactive: notAutoBoost, pinned: true },
+				"Target visual quality. It sets the base CRF: Lower = 40, Low = 35, Medium = 30, High = 25, Higher = 20 (each +5 for sources larger than 1080p). The booster then lowers the CRF (spending more bits) on scenes that a fast test encode showed to be weaker than average, so quality stays consistent across the whole file. Higher quality means a bigger file.",
+				{ inactive: notPresets, pinned: true },
 			),
 			row(
 				"Speed",
 				pick(SPEED, s.finalSpeed),
 				pick(SPEED, b.finalSpeed),
 				"Encoder speed preset for the final encode (Slower, Slow, Medium, Fast, Faster). Slower presets let SVT-AV1 search harder for efficient ways to compress each frame, giving better quality per bit (a smaller file at the same quality) at the cost of much longer encode times. Faster presets finish sooner but compress less efficiently. Speed doesn't change the target quality, only how efficiently it is reached.",
-				{ inactive: notAutoBoost, pinned: true },
-			),
-			row(
-				"Scene boosting",
-				s.skipBoosting ? "Skipped" : "On",
-				b.skipBoosting ? "Skipped" : "On",
-				"Auto-Boost-Essential normally runs a fast test encode, measures the quality of every scene and writes per-scene CRF zones so difficult scenes get extra bits. Skipping boosting goes straight to a single final encode at the base CRF: much faster, but quality can dip in demanding scenes.",
-				{ inactive: notAutoBoost },
+				{ inactive: notPresets, pinned: true },
 			),
 			row(
 				"CRF",
 				num(s.manualCrf),
 				num(b.manualCrf),
-				"Constant Rate Factor (1-70) for SVT-AV1-HDR and SVT-AV1-5FISH, applied to the whole file. Lower values mean higher quality and bigger files, while higher values mean smaller files with more visible compression.",
+				"Constant Rate Factor (1-70). Lower values mean higher quality and bigger files, while higher values mean smaller files with more visible compression. Without a booster it applies to the whole file. Rabbit Boost raises or lowers it scene by scene.",
 				{ inactive: notManual, pinned: true },
 			),
 			row(
 				"Preset",
 				num(s.manualPreset),
 				num(b.manualPreset),
-				"SVT-AV1 preset (-1 to 13) for SVT-AV1-HDR and SVT-AV1-5FISH. Lower presets are slower but compress more efficiently (better quality per bit), while higher presets are faster but less efficient.",
+				"SVT-AV1 preset (-1 to 13). Lower presets are slower but compress more efficiently (better quality per bit), while higher presets are faster but less efficient.",
 				{ inactive: notManual, pinned: true },
+			),
+			row(
+				"Booster",
+				boosterLabel(s.booster, s.encoder),
+				boosterLabel(b.booster, b.encoder),
+				"What adjusts the CRF scene by scene. Both boosters make a quick test encode first, check how good each scene looks, and give weaker scenes more bits and easy ones fewer. Auto-Boost-Essential works with SVT-AV1-Essential only. Rabbit Boost also drives SVT-AV1-Tritium and judges scenes closer to how people see them. Off encodes the whole video at one CRF.",
+				{ inactive: noBooster, changed: s.booster !== b.booster },
+			),
+			row(
+				"Scene boosting",
+				s.skipBoosting ? "Skipped" : "On",
+				b.skipBoosting ? "Skipped" : "On",
+				"The booster normally runs a fast test encode, measures the quality of every scene and writes per-scene CRF zones so difficult scenes get extra bits. Skipping boosting goes straight to a single final encode at the base CRF: much faster, but quality can dip in demanding scenes.",
+				{ inactive: notBoosting },
+			),
+			row(
+				"Protect dark scenes",
+				yesNo(s.boostDarkAware),
+				yesNo(b.boostDarkAware),
+				"Rabbit Boost gives dark scenes more bits, so shadows and night scenes do not break into flat blocky patches. Files of dark shows get somewhat larger.",
+				{ inactive: notBoosting ?? (rabbit ? undefined : "Only used by Rabbit Boost.") },
+			),
+			row(
+				"Max bitrate",
+				s.maxBitrateMbps > 0 ? `${s.maxBitrateMbps} Mb/s` : "No limit",
+				b.maxBitrateMbps > 0 ? `${b.maxBitrateMbps} Mb/s` : "No limit",
+				"Caps noisy scenes that are not worth the bits. Rabbit Boost gives scenes over it a higher CRF, and both boosters keep peaks under it with --mbr.",
+				{ inactive: notBoosting },
+			),
+			row(
+				"HDR10+ metadata",
+				yesNo(s.hdr10Plus),
+				yesNo(b.hdr10Plus),
+				"Measures HDR10+ metadata with retone after Prepare and writes it into the AV1 encode, so HDR10+ displays tone map every scene on its own. A Dolby Vision source gives the scenes its shots. Applies to PQ (HDR) sources only.",
+				{ inactive: videoOff },
 			),
 			row(
 				"Custom encoder parameters",
@@ -872,13 +1049,69 @@ function buildGroups(s: Settings): SettingGroup[] {
 	} else {
 		s.vsFilters.forEach((f, i) => {
 			const params = f.params.map(([k, v]) => `${k}=${v}`).join(", ");
-			const level = pick(LEVEL, f.level);
+			const level = LEVEL[f.level] ?? f.level;
 			const label = s.vsFilters.length > 1 ? `VapourSynth filter ${i + 1} (${f.id})` : `VapourSynth filter (${f.id})`;
 			filterRows.push(row(label, params ? `${level} · ${params}` : level, "None", vsDescription));
 		});
 	}
 
 	const filters: SettingGroup = { title: "Denoise & deband", rows: filterRows };
+
+	const syntheticOff = grainOff ?? (syntheticGrain(s) === "Off" ? "Synthetic grain is off." : undefined);
+	const grain: SettingGroup = {
+		title: "Film grain",
+		rows: [
+			row(
+				"AV1 film grain table",
+				s.filmGrainTable ? "Used" : "None",
+				b.filmGrainTable ? "Used" : "None",
+				"A table measured from the grainy original that puts matching synthetic grain back on an externally denoised input. Rabbit Encoder measures it with regrain diff and writes it into the encoded video with regrain apply. A table takes precedence over restored and synthetic grain.",
+				{ inactive: grainOff },
+			),
+			row(
+				"Restore lost grain",
+				yesNo(s.filmGrainRestore),
+				yesNo(b.filmGrainRestore),
+				"When Rabbit Encoder denoises the video itself, it measures the grain the denoiser removed and writes it back into the encode. With denoise off, it measures the grain the encoder smoothed away and writes that back without encoding again. That fills flat areas and hides banding but does not make the file smaller.",
+				{ inactive: grainOff },
+			),
+			row(
+				"Grain amount",
+				s.filmGrainJustEnough ? "Just enough to hide banding" : "All measured grain",
+				b.filmGrainJustEnough ? "Just enough to hide banding" : "All measured grain",
+				"Puts back only enough of the measured grain to hide banding, at most a deviation of 0.5 on the 0 to 255 scale. Smaller files and a cleaner picture. Applies to every measured table.",
+				{ inactive: grainOff },
+			),
+			row(
+				"Grain pattern",
+				s.filmGrainStatic ? "Static" : "New every frame",
+				b.filmGrainStatic ? "Static" : "New every frame",
+				"Static lays the same grain pattern over every frame of a scene, like a texture on the screen, instead of a new pattern each frame. It suits light grain on footage that mostly stands still, such as grain that only hides banding in anime.",
+				{ inactive: grainOff },
+			),
+			row(
+				"Synthetic grain",
+				syntheticGrain(s),
+				syntheticGrain(b),
+				"Grain of a chosen strength, written with regrain generate, for encodes where no measured table applies. ISO is camera sensor noise at that ISO for the frame size of the encode, as --photon-noise uses it. Deviation is a strength on the 0 to 255 scale.",
+				{ inactive: grainOff },
+			),
+			row(
+				"Synthetic grain size",
+				pick(GRAIN_SIZE, s.filmGrainSyntheticSize),
+				pick(GRAIN_SIZE, b.filmGrainSyntheticSize),
+				"Fine is single pixels like digital camera noise, Medium is like most film grain, and Coarse forms clumps a few pixels wide.",
+				{ inactive: syntheticOff },
+			),
+			row(
+				"Synthetic grain chroma",
+				num(s.filmGrainSyntheticChroma),
+				num(b.filmGrainSyntheticChroma),
+				"Colour grain added next to the brightness grain, as a deviation on the 0 to 255 scale. 0 keeps the grain colourless.",
+				{ inactive: syntheticOff },
+			),
+		],
+	};
 
 	const audio: SettingGroup = {
 		title: "Audio",
@@ -1212,5 +1445,5 @@ function buildGroups(s: Settings): SettingGroup[] {
 		for (const g of [subtitles, detection, styling]) for (const r of g.rows) r.inactive ??= subsCopied;
 	}
 
-	return [pipeline, video, filters, audio, subtitles, detection, styling];
+	return { groups: [pipeline, video, filters, grain, audio, subtitles, detection, styling], unknownValues: unknownSeen.size };
 }

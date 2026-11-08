@@ -42,7 +42,7 @@ export function buildSettingsCard(decoded: DecodedSettings): HTMLElement {
 
 	if (decoded.newerFormat) rows.push(row("Format", `RE${decoded.version} (shown best-effort)`));
 
-	if (decoded.items.length === 0) {
+	if (decoded.items.length === 0 && decoded.unknownCount === 0) {
 		rows.push(row("Settings", "All defaults"));
 	} else {
 		for (const item of decoded.items) {
@@ -53,6 +53,9 @@ export function buildSettingsCard(decoded: DecodedSettings): HTMLElement {
 			});
 			rows.push(el("div", { className: item.mono ? "info-row settings-flag-row" : "info-row", children: [label, valueNode(item, "value")] }));
 		}
+	}
+	if (decoded.unknownCount > 0) {
+		rows.push(row("Not recognised", `${decoded.unknownCount} ${decoded.unknownCount === 1 ? "setting" : "settings"}, see All settings`));
 	}
 
 	const openBtn = el("button", {
@@ -212,8 +215,15 @@ export function openSettingsModal(decoded: DecodedSettings): void {
 				text: `This file uses settings format RE${decoded.version}, newer than this site understands (RE1). Settings added since may be missing or shown as defaults.`,
 			})
 		: null;
+	const unknownBanner =
+		decoded.unknownCount > 0
+			? el("div", {
+					className: "rs-banner",
+					text: "This code was written by a newer Rabbit Encoder. Values marked not recognised and the settings under Not recognised are shown as stored in the code. Rabbit Encoder still reads them all when the code is imported.",
+				})
+			: null;
 
-	const body = el("div", { className: "rs-modal-body", children: [banner, emptyNote, ...groups] });
+	const body = el("div", { className: "rs-modal-body", children: [banner, unknownBanner, emptyNote, ...groups] });
 	body.addEventListener("scroll", hideTip, { passive: true });
 
 	// Footer: the raw code, importable in Rabbit Encoder
